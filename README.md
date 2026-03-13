@@ -30,7 +30,7 @@ Captivox Recorder currently focuses on:
 A successful recording produces a session folder such as:
 
 ```
-C:\Meetily\recordings\meeting-2026-03-12-0830\
+C:\recordings\meeting-2026-03-12-0830
   audio_mix.wav
   manifest.json
   READY
