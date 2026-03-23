@@ -65,44 +65,7 @@ All dependencies can be installed via the provided PowerShell script:
 
 ## Quick start
 
-1. Clone this repository and switch to the project directory:
-
-   ```powershell
-   git clone https://github.com/rgerr/captivox-recorder.git
-   cd captivox-recorder
-   ```
-
-2. Install prerequisites:
-
-   ```powershell
-   .\install-prereqs.ps1
-   ```
-
-3. Build and run the recorder:
-
-   ```powershell
-   .\build-win-x64.ps1
-   # The built application is in out/Release
-   .\out\Release\Captivox.Recorder.exe
-   ```
-
-4. Start the worker (in a separate terminal):
-
-   ```powershell
-   python .\worker\run_worker.py
-   ```
-
-5. Record a meeting. When you stop recording, a `READY` file will appear in the session folder; the worker will pick it up and produce a transcript.
-
-## Build from source
-
-To build from source manually:
-
-```powershell
-dotnet publish src/Captivox.Recorder -c Release -r win-x64 -o out/Release /p:PublishSingleFile=true /p:SelfContained=true
-```
-
-This produces a self-contained `Captivox.Recorder.exe` in `out/Release`. A signed installer is planned for a future release.
+- Coming soon!
 
 ## Roadmap
 
