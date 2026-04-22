@@ -1,46 +1,85 @@
 # Captivox Recorder
 
-![Captivox Banner](captivox-banner.png)
+**0.9.0-beta1 \u00b7 Donationware beta \u00b7 Windows**
 
-**Beta – 0.9.0-beta1**  
-Captivox Recorder is a local Windows meeting recorder with a session‑folder workflow and an offline transcription pipeline. It captures microphone and system audio, writes a structured session folder, and hands off to a worker process for WhisperX‑based transcription. All audio and transcripts remain on your machine.
+Captivox Recorder is a local-first Windows meeting recorder and transcription workspace.
+It records microphone and system audio, writes a structured session folder, and hands off transcription through a filesystem-driven workflow:
 
-## What's new
+`recorder -> session folder -> READY -> worker -> transcription runner -> WhisperX -> transcript`
 
-The core recording and transcription workflow is fully functional and free to use. If you find Captivox valuable, please consider supporting development via [donations](https://www.paypal.com/donate/?business=J8L5Z2UP4K6HL&no_recurring=0&currency_code=EUR).
+The session folder remains the source of truth. Audio, transcripts, and derived outputs stay on your machine.
 
-## Key features
+## What Captivox does today
 
-- **Local-first**: recordings and transcripts stay on your computer.
-- **Microphone & system audio capture**: record both sides of your meetings.
-- **Session folder output**: each recording is stored in its own folder with predictable artifacts.
-- **Structured handoff**: a `READY` marker signals to a worker to start transcription.
-- **Offline transcription**: uses WhisperX with optional diarization for accurate speaker labels.
+### Current beta capabilities
+
+- Record **microphone + system audio**
+- Write each recording to its own **session folder**
+- Use an explicit **READY** handoff to the worker
+- Run local transcription through **WhisperX**
+- Keep transcript processing and derived AI output separated
+- Show a calmer **single-session review** workspace in the library
+- Surface **direct transcript actions** in the session detail area
+- Generate **structured insights** from completed sessions
+- Export **diagnostics**
+- Support **local/cloud provider choice** for derived enrichment
+- Support **Microsoft 365 / Exchange Online** meeting context via interactive browser login
+- Keep multiple linked Microsoft 365 accounts locally
+- Offer per-account source selection for calendars and optional mailbox context
+- Support **local AI settings** with:
+  - hardware estimate
+  - active local model
+  - separate local model download flow
+- Provide visible **UI localisation / language support**
+
+### Still being validated / not final yet
+
+The following areas exist in the product direction, but should not be presented as fully mature yet:
+
+- full runtime validation of **multiple Microsoft 365 accounts** on representative tenants
+- confirmed best-match behaviour across multiple linked accounts on real sessions
+- shared mailbox / shared calendar validation
+- broader plausibility validation of the **AI hardware estimate** across different systems
+- final semantic quality of actions / decisions as a mature end layer
+- richer cross-session search, recall, and broader automation
+
+## Product direction
+
+Captivox is not meant to become a generic cloud meeting workspace.
+The direction is:
+
+1. stronger single-session review
+2. stronger structured insights
+3. better contextual search and recall
+4. automation on top of the same local workflow
 
 ## Installation
 
-- **Installer**: Download the latest installer from the [releases](https://github.com/rgerr/captivox-recorder/releases) page. Run the installer and follow the on‑screen prompts.
-- **Source code**: The source code is not published in this repository. Please use the installer for now.
+### Installer
 
-## Roadmap
+Download the latest installer from the [Releases](https://github.com/rgerr/captivox-recorder/releases) page and run it on Windows.
 
-- Finalize the session library, tagging and filtering.
-- Signed installer and automatic updates.
-- AI-assisted summaries and library chat.
-- Cross-platform support.
+### Source code
 
-## Contributing
-
-Contributions are welcome! Please open issues or pull requests for bugs and enhancements. Before contributing code, run `install-prereqs.ps1` and `build-win-x64.ps1` to reproduce the build environment.
+The source code is **not published** in this repository at this time.
+This repository is currently used as the public product and release page for installer-based distribution.
 
 ## Donations
 
-Captivox is a passion project. If you find it useful, please support development via [PayPal](https://www.paypal.com/donate/?business=J8L5Z2UP4K6HL&no_recurring=0&currency_code=EUR). Your support helps cover costs and accelerates new features.
+Captivox is currently distributed as donationware.
+
+If you want to support development, you can donate here:
+[PayPal donation link](https://www.paypal.com/donate/?business=J8L5Z2UP4K6HL&no_recurring=0&currency_code=EUR)
+
+## Feedback
+
+If you find a bug or want to request an improvement, please use the GitHub issue templates in this repository.
 
 ## Security
 
-For security issues or vulnerability reports, please contact our security team via the e‑mail listed in [SECURITY.md](SECURITY.md).
+Please read [SECURITY.md](SECURITY.md) before reporting security issues.
 
-## License and usage
+## Privacy
 
-This code is provided for evaluation and collaboration under a proprietary license. Redistribution or commercial use requires permission from the authors.
+Captivox is designed as a local-first product.
+See [PRIVACY.md](PRIVACY.md) for the current privacy note.

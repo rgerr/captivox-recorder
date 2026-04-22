@@ -1,11 +1,34 @@
 # Security Policy
 
-If you discover a security vulnerability in Captivox Recorder, please let us know. We take security issues seriously and will respond promptly.
+## Supported version
 
-## Reporting a Vulnerability
+At this stage, only the latest public beta release is considered supported:
 
-Please contact us via e‑mail at [placeholder] with a detailed description of the issue, including steps to reproduce. We will work with you to assess and address the vulnerability as quickly as possible. Please do not publicly disclose the issue until we have had an opportunity to resolve it.
+- `0.9.0-beta1`
 
-## Supported Versions
+## Reporting a vulnerability
 
-At this time only the latest beta release (currently 0.9.0‑beta1) receives security updates.
+A dedicated security contact e-mail address is not published yet.
+
+Until that address is available:
+
+- **do not** post sensitive vulnerability details in a public GitHub issue
+- use public issues only for non-sensitive security-related questions
+- wait for the dedicated security contact to be added here before sending sensitive disclosure details
+
+This file will be updated as soon as the dedicated security reporting address is available.
+
+## Scope
+
+Security reports should focus on issues such as:
+
+- unintended exposure of recordings, transcripts, or diagnostics
+- insecure handling of local session data
+- unsafe logging or export behaviour
+- privilege / path / installer issues on Windows
+- secrets or credentials accidentally stored in output or configuration
+
+## Notes
+
+Captivox is a local-first Windows application.  
+The core workflow is intentionally filesystem-driven and should remain transparent and inspectable.
