@@ -20,7 +20,7 @@ This 0.9.0-beta1 release drops the licensing and activation barrier. The core re
 ## Installation
 
 - **Installer**: Download the latest installer from the [releases](https://github.com/rgerr/captivox-recorder/releases) page. Run the installer and follow the on‑screen prompts.
-- **From source**: Clone this repository, run `./install-prereqs.ps1` to set up Python, FFmpeg and WhisperX dependencies, then run `./build-win-x64.ps1` to build the application. The self-contained executable will be in `src/CaptivoxRecorder/bin/Release/net8.0-windows10.0.17763.0/win-x64/publish/CaptivoxRecorder.exe`.
+- **Source code**: The source code is not published in this repository. Please use the installer for now.
 
 ## Roadmap
 
