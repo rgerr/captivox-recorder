@@ -1,6 +1,6 @@
 # Captivox Recorder
 
-**0.9.0-beta1 \u00b7 Donationware beta \u00b7 Windows**
+**0.9.0-beta1 Windows**
 
 Captivox Recorder is a local-first Windows meeting recorder and transcription workspace.
 It records microphone and system audio, writes a structured session folder, and hands off transcription through a filesystem-driven workflow:
