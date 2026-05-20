@@ -1,85 +1,54 @@
 # Captivox Recorder
 
-**0.9.0-beta1 Windows**
+**v7.25.1 – local‑first meeting recorder and personal assistant**  
+Captivox Recorder turns your Windows machine into a personal meeting and action‑tracking assistant. It captures microphone and system audio, writes each recording to a unique session folder and runs local transcription through WhisperX. Everything stays on your machine. No cloud uploads, no Graph APIs.
 
-Captivox Recorder is a local-first Windows meeting recorder and transcription workspace.
-It records microphone and system audio, writes a structured session folder, and hands off transcription through a filesystem-driven workflow:
+## What Captivox does as of v7.25.1
 
-`recorder -> session folder -> READY -> worker -> transcription runner -> WhisperX -> transcript`
+- Records microphone + system audio and writes each recording to its own session folder.
+- Uses an explicit READY hand‑off before the worker begins transcription.
+- Runs local transcription through WhisperX. Derived AI outputs remain separate from raw transcripts.
+- Shows a calmer **single‑session review** workspace in the library.
+- Surfaces **direct transcript insights** in the session detail area.
+- Generates **structured session insights** from completed sessions.
+- Exports **diagnostics** such as audio levels and diarization quality.
 
-The session folder remains the source of truth. Audio, transcripts, and derived outputs stay on your machine.
+### Personal assistant features
 
-## What Captivox does today
+- **Local MCP service** (`captivox-local`) for tasks like finding sessions, retrieving transcripts, searching multiple sessions, or retrieving open actions, agreements, decisions and questions.
+- **Meeting preparation** via `prepare_meeting_context`: identify your next meeting, gather previous discussions, open actions and relevant context from your documents and Outlook Classic calendar/mail.
+- **Day and week overview** combining your agenda, confirmed actions, Outlook tasks and flagged mails.
+- **Action inbox with retention**: review proposed actions, confirm or reject them, export to Outlook tasks and mark them complete. Completed or rejected items disappear from your list after a short retention period.
+- **Context documents**: index local folders (including synced OneDrive/SharePoint) and search them for meeting prep. v7.28 will add support for reading Word comments, tracked changes and PDF annotations.
+- **Stable MCP path support**: easily configure Claude Desktop to use a persistent Captivox MCP binary for reliable local integration.
 
-### Current beta capabilities
+### Outlook Classic integration
 
-- Record **microphone + system audio**
-- Write each recording to its own **session folder**
-- Use an explicit **READY** handoff to the worker
-- Run local transcription through **WhisperX**
-- Keep transcript processing and derived AI output separated
-- Show a calmer **single-session review** workspace in the library
-- Surface **direct transcript actions** in the session detail area
-- Generate **structured insights** from completed sessions
-- Export **diagnostics**
-- Support **local/cloud provider choice** for derived enrichment
-- Support **Microsoft 365 / Exchange Online** meeting context via interactive browser login
-- Keep multiple linked Microsoft 365 accounts locally
-- Offer per-account source selection for calendars and optional mailbox context
-- Support **local AI settings** with:
-  - hardware estimate
-  - active local model
-  - separate local model download flow
-- Provide visible **UI localisation / language support**
+Captivox integrates with Outlook Classic via COM. It can read your agenda, find matching meetings, search mail metadata and flagged mails, and create draft tasks/emails on demand. Writing or sending mail only happens after you explicitly approve it; deletion and modification of existing items are never automated. We deliberately avoid Graph/New Outlook APIs for a local‑first workflow.
 
-### Still being validated / not final yet
+### Product direction
 
-The following areas exist in the product direction, but should not be presented as fully mature yet:
+Captivox continues to prioritise a local‑first architecture and explicit user control. The roadmap includes document feedback extraction (Word comments, PDF annotations) in v7.28 and reliable briefing packs in v7.29+. Teams chat integration and Graph API access are currently out of scope. See the [`docs/`](docs) directory for details.
 
-- full runtime validation of **multiple Microsoft 365 accounts** on representative tenants
-- confirmed best-match behaviour across multiple linked accounts on real sessions
-- shared mailbox / shared calendar validation
-- broader plausibility validation of the **AI hardware estimate** across different systems
-- final semantic quality of actions / decisions as a mature end layer
-- richer cross-session search, recall, and broader automation
+### Installation
 
-## Product direction
+Currently this is an internal tool. We publish preview builds under Releases for Windows x64. To try Captivox:
 
-Captivox is not meant to become a generic cloud meeting workspace.
-The direction is:
+1. Download the latest `CaptivoxRecorder_v7_25_1_..._bundle.zip` from the releases page.
+2. Extract it to a folder on your computer (no installer required).
+3. Run `CaptivoxRecorder.exe`.
+4. In Claude Desktop, configure the local MCP path to point at `Captivox.LocalMcp.exe` in the `publish` subfolder of your extraction.
 
-1. stronger single-session review
-2. stronger structured insights
-3. better contextual search and recall
-4. automation on top of the same local workflow
-
-## Installation
-
-### Installer
-
-Download the latest installer from the [Releases](https://github.com/rgerr/captivox-recorder/releases) page and run it on Windows.
+See `docs/install_guide.md` for step‑by‑step instructions.
 
 ### Source code
 
-The source code is **not published** in this repository at this time.
-This repository is currently used as the public product and release page for installer-based distribution.
+This repository contains the recorder GUI, local MCP service and test scripts. The code is published for transparency and collaboration. Issues and pull requests are welcome, but please note that the roadmap is driven by internal use cases and may change without notice.
 
-## Donations
+### Security & privacy
 
-Captivox is currently distributed as donationware.
+Captivox is local‑first. We do not send your audio, transcripts or context to any cloud service by default. Outlook integration uses Classic COM rather than Graph. See [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md) for details.
 
-If you want to support development, you can donate here:
-[PayPal donation link](https://www.paypal.com/donate/?business=J8L5Z2UP4K6HL&no_recurring=0&currency_code=EUR)
+---
 
-## Feedback
-
-If you find a bug or want to request an improvement, please use the GitHub issue templates in this repository.
-
-## Security
-
-Please read [SECURITY.md](SECURITY.md) before reporting security issues.
-
-## Privacy
-
-Captivox is designed as a local-first product.
-See [PRIVACY.md](PRIVACY.md) for the current privacy note.
+_Captivox Recorder is a work in progress. v7.25.1 introduces a stable MCP path and an action inbox with retention; v7.28 will add document feedback extraction; v7.29 will add reliable briefing packs._
