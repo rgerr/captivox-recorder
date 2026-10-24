@@ -16,7 +16,7 @@ public sealed partial class MainForm
     private readonly Dictionary<string, Control> _settingsPanels = new(StringComparer.Ordinal);
     private readonly Dictionary<string, RadioButton> _settingsCategoryButtons = new(StringComparer.Ordinal);
     private Panel? _settingsContentHost;
-    private string _settingsCategory = "meldingen";
+    private string _settingsCategory = "algemeen";
     private bool _settingsSyncing;
 
     private Label? _settingsDevicesLabel;
@@ -32,6 +32,14 @@ public sealed partial class MainForm
     private Label? _settingsFailureNote;
 
     private Label? _settingsRetentionLabel;
+
+    private TableLayoutPanel? _settingsAmdSection;
+    private CheckBox? _settingsAmdFastRoute;
+
+    private ComboBox? _settingsInterfaceLanguage;
+    private ComboBox? _settingsRecordingLanguage;
+    private Label? _settingsLanguageRestartNote;
+    private Button? _settingsLanguageRestartButton;
 
     private TabPage BuildSettingsPage()
     {
@@ -51,7 +59,7 @@ public sealed partial class MainForm
         body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         body.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         var categories = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, BackColor = Color.Transparent, Margin = new Padding(0, 0, 16, 0), AccessibleName = "Onderwerpen" };
-        foreach (var (key, text) in new[] { ("opnemen", "Opnemen"), ("meldingen", "Meldingen"), ("opslag", "Opslag en bewaren"), ("geavanceerd", "Geavanceerd") })
+        foreach (var (key, text) in new[] { ("algemeen", "Algemeen"), ("opnemen", "Opnemen"), ("meldingen", "Meldingen"), ("opslag", "Opslag en bewaren"), ("geavanceerd", "Geavanceerd") })
         {
             var selected = key == _settingsCategory;
             var option = new RadioButton
@@ -70,7 +78,6 @@ public sealed partial class MainForm
                 Cursor = Cursors.Hand,
                 ForeColor = selected ? ShellPalette.Accent : ShellPalette.Text,
                 BackColor = Color.Transparent,
-                AccessibleDescription = "skip-ui-localization",
             };
             option.FlatAppearance.BorderSize = 0;
             option.FlatAppearance.CheckedBackColor = ShellPalette.AccentSoft;
@@ -93,6 +100,7 @@ public sealed partial class MainForm
         root.Controls.Add(body, 0, 1);
         root.Controls.Add(ShellLabel("Vinkjes en keuzes worden meteen bewaard.", 9F, FontStyle.Regular, ShellPalette.TextSecondary, new Padding(0, 4, 0, 4)), 0, 2);
 
+        AddSettingsPanel("algemeen", BuildSettingsGeneralPanel());
         AddSettingsPanel("opnemen", BuildSettingsRecordingPanel());
         AddSettingsPanel("meldingen", BuildSettingsNotificationsPanel());
         AddSettingsPanel("opslag", BuildSettingsStoragePanel());
@@ -139,7 +147,7 @@ public sealed partial class MainForm
 
     private CheckBox SettingsCheck(TableLayoutPanel stack, string text, string detail, Func<bool> read, Action<bool> write)
     {
-        var check = new CheckBox { Text = text, AutoSize = true, Font = ShellFont("Segoe UI", 10.5F, FontStyle.Regular, GraphicsUnit.Point), Margin = new Padding(0, 6, 0, detail.Length > 0 ? 0 : 6), BackColor = Color.Transparent, AccessibleDescription = "skip-ui-localization" };
+        var check = new CheckBox { Text = UiText.T(text), AutoSize = true, Font = ShellFont("Segoe UI", 10.5F, FontStyle.Regular, GraphicsUnit.Point), Margin = new Padding(0, 6, 0, detail.Length > 0 ? 0 : 6), BackColor = Color.Transparent };
         check.CheckedChanged += (_, _) =>
         {
             if (_settingsSyncing) return;
@@ -224,6 +232,106 @@ public sealed partial class MainForm
             RefreshSettingsPage();
         });
         ShellStackAdd(stack, SettingsActionRow(_settingsOutputButton));
+        // Alleen met een AMD-videokaart: de snelle maar minder nauwkeurige route. Standaard uit (zie WorkerSettings.AmdGpuFastRoute).
+        _settingsAmdSection = ShellStack();
+        ShellStackAdd(_settingsAmdSection, SettingsDivider());
+        ShellStackAdd(_settingsAmdSection, ShellSectionTitle("Uitschrijven"));
+        _settingsAmdFastRoute = SettingsCheck(_settingsAmdSection, "Snel via de videokaart (AMD), iets minder nauwkeurig",
+            "Standaard schrijft Captivox uit op de processor: nauwkeurig, op lage prioriteit zodat je pc bruikbaar blijft. Met deze keuze gebruikt Captivox je AMD-videokaart: veel sneller, maar met meer fouten en soms verzonnen tekst in stiltes.",
+            () => _appSettings.Worker.AmdGpuFastRoute,
+            value =>
+            {
+                _appSettings.Worker.AmdGpuFastRoute = value;
+                // Uit: weer automatisch (NVIDIA via CUDA, anders de processor).
+                _appSettings.Worker.TranscriptionProfile = value ? "amd-gpu" : "auto";
+            });
+        ShellStackAdd(stack, _settingsAmdSection);
+        return stack;
+    }
+
+    // ---------- Algemeen ----------
+
+    // De taal van de interface (geldt na opnieuw starten), de taal van de opnames en hoe Captivox start.
+    private Control BuildSettingsGeneralPanel()
+    {
+        var stack = SettingsPanel("Algemeen", "De taal van Captivox en van je opnames, en hoe Captivox start.");
+        Label Caption(string text) => ShellLabel(text, 10F, FontStyle.Bold, ShellPalette.Text, new Padding(0, 6, 0, 4));
+        ComboBox LanguageCombo(IEnumerable<(string Id, string Name)> options, string selectedId)
+        {
+            var combo = new ComboBox
+            {
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                FlatStyle = FlatStyle.Flat,
+                Font = ShellFont("Segoe UI", 10F, FontStyle.Regular, GraphicsUnit.Point),
+                Width = LogicalToDeviceUnits(260),
+                Margin = new Padding(0, 2, 8, 0),
+            };
+            foreach (var (id, name) in options) combo.Items.Add(new SettingsLanguageOption(id, name));
+            combo.SelectedItem = combo.Items.Cast<SettingsLanguageOption>().FirstOrDefault(o => o.Id == selectedId);
+            // Het muiswiel kiest geen taal terwijl de gebruiker alleen door de pagina scrolt.
+            combo.MouseWheel += (_, e) =>
+            {
+                if (!combo.DroppedDown && e is HandledMouseEventArgs handled) handled.Handled = true;
+            };
+            return combo;
+        }
+
+        ShellStackAdd(stack, Caption("Taal van Captivox"));
+        // Elke taal in haar eigen naam, zodat iedereen zijn taal terugvindt.
+        _settingsInterfaceLanguage = LanguageCombo(UiText.SupportedLanguages.Select(id => (id, UiText.DisplayName(id))), _appSettings.Ui.InterfaceLanguage);
+        _settingsInterfaceLanguage.AccessibleName = UiText.T("Taal van Captivox");
+        _settingsInterfaceLanguage.SelectionChangeCommitted += (_, _) =>
+        {
+            if (_settingsSyncing || _settingsInterfaceLanguage.SelectedItem is not SettingsLanguageOption option) return;
+            var before = _appSettings.Ui.InterfaceLanguage;
+            try
+            {
+                _appSettings.Ui.InterfaceLanguage = option.Id;
+                SaveSettingsFromSettingsPage(outputChanged: false);
+            }
+            catch (Exception ex)
+            {
+                _appSettings.Ui.InterfaceLanguage = before;
+                AppRuntime.LogException("Taal van de interface bewaren mislukt", ex);
+                ShowOwnedMessage(this, "Bewaren lukte niet; de oude instelling blijft staan. " + ex.Message, "Instellingen", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+
+            RefreshSettingsPage();
+        };
+        ShellStackAdd(stack, SettingsActionRow(_settingsInterfaceLanguage));
+        _settingsLanguageRestartNote = ShellLabel("De nieuwe taal geldt nadat Captivox opnieuw is gestart.", 9.5F, FontStyle.Regular, ShellPalette.TextSecondary, new Padding(0, 6, 0, 6));
+        _settingsLanguageRestartNote.MaximumSize = new Size(640, 0);
+        ShellStackAdd(stack, _settingsLanguageRestartNote);
+        _settingsLanguageRestartButton = ShellButton("Nu opnieuw starten", false, (_, _) => RestartForInterfaceLanguage());
+        ShellStackAdd(stack, SettingsActionRow(_settingsLanguageRestartButton));
+
+        ShellStackAdd(stack, Caption("Taal van de opnames"));
+        _settingsRecordingLanguage = LanguageCombo(LanguageProfileCatalog.GetOptions().Select(o => (o.Id, o.DisplayName)), _appSettings.Ui.LanguageProfile);
+        _settingsRecordingLanguage.AccessibleName = UiText.T("Taal van de opnames");
+        _settingsRecordingLanguage.SelectionChangeCommitted += (_, _) =>
+        {
+            if (_settingsSyncing || _settingsRecordingLanguage.SelectedItem is not SettingsLanguageOption option) return;
+            var before = _appSettings.Ui.LanguageProfile;
+            try
+            {
+                _appSettings.Ui.LanguageProfile = option.Id;
+                // SettingsStore.Save neemt de transcriptietaal van de worker hieruit over.
+                SaveSettingsFromSettingsPage(outputChanged: false);
+            }
+            catch (Exception ex)
+            {
+                _appSettings.Ui.LanguageProfile = before;
+                AppRuntime.LogException("Taal van de opnames bewaren mislukt", ex);
+                ShowOwnedMessage(this, "Bewaren lukte niet; de oude instelling blijft staan. " + ex.Message, "Instellingen", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+
+            RefreshSettingsPage();
+        };
+        ShellStackAdd(stack, SettingsActionRow(_settingsRecordingLanguage));
+        var recordingNote = ShellLabel("De taal die in je overleggen gesproken wordt. Captivox schrijft nieuwe opnames in deze taal uit.", 9.5F, FontStyle.Regular, ShellPalette.TextSecondary, new Padding(0, 6, 0, 0));
+        recordingNote.MaximumSize = new Size(640, 0);
+        ShellStackAdd(stack, recordingNote);
+
         ShellStackAdd(stack, SettingsDivider());
         _settingsStartWithWindows = SettingsCheck(stack, "Starten met Windows", string.Empty, () => _appSettings.Ui.StartWithWindows, value => _appSettings.Ui.StartWithWindows = value);
         _settingsStartMinimized = SettingsCheck(stack, "Geminimaliseerd starten", "Geldt vanaf de volgende keer dat Captivox start.", () => _appSettings.Ui.StartMinimized, value => _appSettings.Ui.StartMinimized = value);
@@ -231,6 +339,40 @@ public sealed partial class MainForm
         _settingsMinimizeToTray = SettingsCheck(stack, "Bij minimaliseren naar het systeemvak", "Captivox verdwijnt dan uit de taakbalk en blijft rechtsonder bereikbaar. Het kruisje sluit Captivox af.",
             () => _minimizeToTrayCheckbox.Checked, value => _minimizeToTrayCheckbox.Checked = value);
         return stack;
+    }
+
+    // Een taal in een keuzelijst: de naam zoals hij getoond wordt, de code als waarde.
+    private sealed record SettingsLanguageOption(string Id, string Name)
+    {
+        public override string ToString() => Name;
+    }
+
+    // Opnieuw starten voor een andere taal: een nieuw exemplaar wacht tot dit exemplaar is afgesloten (Program.WaitForPidArgument).
+    // Niet tijdens een opname of het afronden ervan.
+    private void RestartForInterfaceLanguage()
+    {
+        if (_session is not null || _recordingBusy || _stopFinalizeInProgress)
+        {
+            ShowOwnedMessage(this, "Er loopt een opname. Start Captivox opnieuw nadat je de opname hebt gestopt.", "Opnieuw starten", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        try
+        {
+            var executable = Environment.ProcessPath ?? Application.ExecutablePath;
+            var start = new System.Diagnostics.ProcessStartInfo(executable) { UseShellExecute = false };
+            start.ArgumentList.Add(Program.WaitForPidArgument);
+            start.ArgumentList.Add(Environment.ProcessId.ToString(CultureInfo.InvariantCulture));
+            System.Diagnostics.Process.Start(start)?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            AppRuntime.LogException("Opnieuw starten voor een andere taal mislukt", ex);
+            ShowOwnedMessage(this, "Opnieuw starten lukte niet. Sluit Captivox en start het opnieuw. " + ex.Message, "Opnieuw starten", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        Close();
     }
 
     // De apparaatkeuze verhuist van het oude opnamescherm naar hier: dezelfde controls (met hun bestaande gedrag:
@@ -282,8 +424,6 @@ public sealed partial class MainForm
         }
 
         // De vertaalslag zette de versterking terug naar de tekst van het opstarten.
-        _micGainNumeric.AccessibleDescription = "skip-ui-localization";
-        _systemGainNumeric.AccessibleDescription = "skip-ui-localization";
 
         _micComboBox.SelectionChangeCommitted += (_, _) => QueueDeviceSave("mic");
         _systemComboBox.SelectionChangeCommitted += (_, _) => QueueDeviceSave("system");
@@ -301,7 +441,7 @@ public sealed partial class MainForm
         // Op het oude scherm: een verwijzing op de plek van de microfoon, en de losse labels van de verhuisde rijen weg.
         if (oldLayout is not null && micCell is { } cell)
         {
-            var pointer = new LinkLabel { Text = "Apparaten kiezen staat nu onder Instellingen, Opnemen", AutoSize = true, LinkColor = ShellPalette.Accent, ActiveLinkColor = ShellPalette.Accent, Margin = new Padding(0, 8, 0, 8), AccessibleDescription = "skip-ui-localization" };
+            var pointer = new LinkLabel { Text = "Apparaten kiezen staat nu onder Instellingen, Opnemen", AutoSize = true, LinkColor = ShellPalette.Accent, ActiveLinkColor = ShellPalette.Accent, Margin = new Padding(0, 8, 0, 8) };
             pointer.LinkClicked += (_, _) => NavigateToSettings("opnemen");
             oldLayout.Controls.Add(pointer, cell.Column, cell.Row);
             foreach (var row in new[] { systemRow, gainRow })
@@ -326,7 +466,6 @@ public sealed partial class MainForm
         _refreshDevicesButton.Dock = DockStyle.None;
         _refreshDevicesButton.Margin = new Padding(0);
         _refreshDevicesButton.Text = "Opnieuw zoeken";
-        _refreshDevicesButton.AccessibleDescription = "skip-ui-localization";
         _refreshDevicesButton.FlatStyle = FlatStyle.Flat;
         _refreshDevicesButton.BackColor = ShellPalette.Surface;
         _refreshDevicesButton.ForeColor = ShellPalette.Text;
@@ -490,11 +629,36 @@ public sealed partial class MainForm
             var ui = _appSettings.Ui;
             RefreshSettingsDeviceNote();
 
-            if (_settingsOutputLabel is not null) _settingsOutputLabel.Text = "Opnames komen in: " + FirstNonEmpty(_outputRootTextBox.Text, "(niet ingesteld)");
+            if (_settingsOutputLabel is not null) _settingsOutputLabel.Text = UiText.F("Opnames komen in: {0}", FirstNonEmpty(_outputRootTextBox.Text, UiText.T("(niet ingesteld)")));
             if (_settingsOutputButton is not null) _settingsOutputButton.Enabled = _session is null;
+            if (_settingsInterfaceLanguage is not null)
+            {
+                _settingsInterfaceLanguage.SelectedItem = _settingsInterfaceLanguage.Items.Cast<SettingsLanguageOption>().FirstOrDefault(o => o.Id == ui.InterfaceLanguage);
+                var pending = !string.Equals(ui.InterfaceLanguage, UiText.Language, StringComparison.Ordinal);
+                if (_settingsLanguageRestartNote is not null) _settingsLanguageRestartNote.Visible = pending;
+                if (_settingsLanguageRestartButton is not null)
+                {
+                    _settingsLanguageRestartButton.Visible = pending;
+                    _settingsLanguageRestartButton.Enabled = _session is null && !_recordingBusy && !_stopFinalizeInProgress;
+                }
+            }
+
+            if (_settingsRecordingLanguage is not null)
+            {
+                _settingsRecordingLanguage.SelectedItem = _settingsRecordingLanguage.Items.Cast<SettingsLanguageOption>().FirstOrDefault(o => o.Id == ui.LanguageProfile);
+                // Tijdens een opname staat de taal van die opname al vast.
+                _settingsRecordingLanguage.Enabled = _session is null;
+            }
+
             if (_settingsStartWithWindows is not null) _settingsStartWithWindows.Checked = ui.StartWithWindows;
             if (_settingsStartMinimized is not null) _settingsStartMinimized.Checked = ui.StartMinimized;
             if (_settingsMinimizeToTray is not null) _settingsMinimizeToTray.Checked = _minimizeToTrayCheckbox.Checked;
+            if (_settingsAmdFastRoute is not null) _settingsAmdFastRoute.Checked = _appSettings.Worker.AmdGpuFastRoute;
+            if (_settingsAmdSection is not null)
+            {
+                _settingsAmdSection.Visible = _appSettings.Worker.AmdGpuFastRoute
+                    || string.Equals(_appSettings.Hardware?.LastGpuVendor, "amd", StringComparison.OrdinalIgnoreCase);
+            }
 
             var n = ui.Notifications;
             if (_settingsNotifyReady is not null) _settingsNotifyReady.Checked = n.TranscriptReady.WindowsEnabled;
@@ -513,8 +677,8 @@ public sealed partial class MainForm
             {
                 var r = _appSettings.Worker.Retention;
                 _settingsRetentionLabel.Text = r.Enabled
-                    ? $"Opruimen staat aan.{Environment.NewLine}Audio: {r.AudioRetentionDays} dagen. Transcripten: {r.TranscriptRetentionDays} dagen. Sessiegegevens: {r.SessionRecordRetentionDays} dagen.{Environment.NewLine}{RecordingFreeSpaceText()}"
-                    : $"Opruimen staat uit: Captivox bewaart alles.{Environment.NewLine}{RecordingFreeSpaceText()}";
+                    ? UiText.T("Opruimen staat aan.") + Environment.NewLine + UiText.F("Audio: {0} dagen. Transcripten: {1} dagen. Sessiegegevens: {2} dagen.", r.AudioRetentionDays, r.TranscriptRetentionDays, r.SessionRecordRetentionDays) + Environment.NewLine + RecordingFreeSpaceText()
+                    : UiText.T("Opruimen staat uit: Captivox bewaart alles.") + Environment.NewLine + RecordingFreeSpaceText();
             }
         }
         finally

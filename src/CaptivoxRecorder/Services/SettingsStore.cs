@@ -21,11 +21,34 @@ internal static partial class SettingsStore
             var path = GetSettingsPath();
             if (!File.Exists(path))
             {
-                return new ApplicationSettings();
+                var fresh = new ApplicationSettings();
+                fresh.Ui.InterfaceLanguage = ReadInstallLanguage() ?? UiText.DefaultLanguage;
+                // Een nieuwe installatie neemt standaard op in de taal van de interface (elke interfacetaal is ook een
+                // transcriptietaal); wie in een andere taal vergadert, kiest dat onder Instellingen, Algemeen.
+                fresh.Ui.LanguageProfile = LanguageProfileCatalog.Normalize(fresh.Ui.InterfaceLanguage);
+                fresh.Worker.Language = LanguageProfileCatalog.GetTranscriptionLanguageCode(fresh.Ui.LanguageProfile);
+                return fresh;
             }
 
             var json = File.ReadAllText(path, Encoding.UTF8);
             var settings = JsonSerializer.Deserialize<ApplicationSettings>(json, JsonOptions) ?? new ApplicationSettings();
+            if (string.IsNullOrWhiteSpace(settings.Ui?.InterfaceLanguage))
+            {
+                settings.Ui ??= new UiSettings();
+                if (HasUiSection(json))
+                {
+                    // Geschreven door een eerdere versie: de interface was Nederlands en blijft dat.
+                    settings.Ui.InterfaceLanguage = "nl";
+                }
+                else
+                {
+                    // Alleen de installatie schreef dit bestand (paden voor de transcriptie): dit is de eerste start, net als
+                    // zonder bestand.
+                    settings.Ui.InterfaceLanguage = ReadInstallLanguage() ?? UiText.DefaultLanguage;
+                    settings.Ui.LanguageProfile = LanguageProfileCatalog.Normalize(settings.Ui.InterfaceLanguage);
+                }
+            }
+
             NormalizeSettings(settings);
             var normalizedJson = JsonSerializer.Serialize(settings, JsonOptions);
             if (!string.Equals(json.Trim(), normalizedJson.Trim(), StringComparison.Ordinal))
@@ -39,9 +62,50 @@ internal static partial class SettingsStore
         {
             TryQuarantineBrokenSettings(ex);
             var settings = new ApplicationSettings();
+            settings.Ui.InterfaceLanguage = ReadInstallLanguage() ?? UiText.DefaultLanguage;
             NormalizeSettings(settings);
             return settings;
         }
+    }
+
+    // Het installatieprogramma legt de taal van de installatie vast in dit bestand (alleen bij een nieuwe installatie).
+    public const string InstallLanguageFileName = "install-language.txt";
+
+    private static string? ReadInstallLanguage()
+    {
+        try
+        {
+            var path = Path.Combine(AppRuntime.GetSettingsDirectory(), InstallLanguageFileName);
+            if (!File.Exists(path)) return null;
+            var value = File.ReadAllText(path, Encoding.UTF8).Trim();
+            return UiText.IsSupported(value) ? value.ToLowerInvariant() : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    // Heeft het instellingenbestand een deel "ui"? Dat schrijft alleen Captivox zelf; de installatie schrijft alleen "worker".
+    private static bool HasUiSection(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Object) return false;
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (string.Equals(property.Name, "ui", StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind == JsonValueKind.Object)
+                {
+                    return true;
+                }
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        return false;
     }
 
     // Versie 1.0.0 van de gratis versie bewaarde een Hugging Face-token voor sprekerherkenning. De gratis versie gebruikt
@@ -92,7 +156,7 @@ internal static partial class SettingsStore
 
             File.Move(path, brokenPath);
             var notePath = Path.ChangeExtension(brokenPath, ".txt");
-            AtomicFileWriter.WriteAllText(notePath, $"Captivox kon application_settings.json niet laden en heeft dit bestand veiliggesteld.\nFout: {ex.GetType().Name}: {ex.Message}\n", Encoding.UTF8);
+            AtomicFileWriter.WriteAllText(notePath, $"Captivox kon application_settings.json niet laden en heeft dit bestand veiliggesteld.\nFout: {ex.GetType().Name}: {ex.Message}\n", Encoding.UTF8); // geen vertaling
         }
         catch (Exception quarantineEx)
         {
@@ -106,6 +170,7 @@ internal static partial class SettingsStore
         settings.Ui.LanguageProfile = string.IsNullOrWhiteSpace(settings.Ui.LanguageProfile)
             ? LanguageProfileCatalog.NormalizeFromWorkerLanguage(settings.Worker?.Language)
             : LanguageProfileCatalog.Normalize(settings.Ui.LanguageProfile);
+        settings.Ui.InterfaceLanguage = UiText.Normalize(settings.Ui.InterfaceLanguage);
         settings.Worker ??= new WorkerSettings();
         settings.License ??= new LicenseSettings();
         settings.Hardware ??= new HardwareProfileSettings();
@@ -251,6 +316,7 @@ internal static partial class SettingsStore
             Ui = new UiSettings
             {
                 LanguageProfile = settings.Ui.LanguageProfile,
+                InterfaceLanguage = settings.Ui.InterfaceLanguage,
                 OutputRoot = settings.Ui.OutputRoot,
                 PreferredMicDeviceId = settings.Ui.PreferredMicDeviceId,
                 PreferredSystemDeviceId = settings.Ui.PreferredSystemDeviceId,
@@ -309,6 +375,7 @@ internal static partial class SettingsStore
                 RuntimeMode = "python",
                 PythonExe = settings.Worker.PythonExe,
                 WhisperXModel = settings.Worker.WhisperXModel,
+                CpuWhisperXModel = settings.Worker.CpuWhisperXModel,
                 ComputeType = settings.Worker.ComputeType,
                 Language = settings.Worker.Language,
                 BatchSize = settings.Worker.BatchSize,

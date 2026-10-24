@@ -1,35 +1,36 @@
 # Privacy
 
-Captivox Recorder werkt volledig op je eigen pc. Er is geen account, geen server van Captivox en geen telemetrie.
+Captivox Recorder runs entirely on your own PC. There is no account, no Captivox server and no telemetry.
 
-## Wat er op je pc blijft
+## What stays on your PC
 
-| Gegeven | Waar | Wie kan erbij |
+| Data | Where | Who can access it |
 | --- | --- | --- |
-| Opnames (`audio_mix.wav`) en transcripten | `%USERPROFILE%\Captivox\Opnames` (instelbaar) | jij en beheerders van de pc |
-| Instellingen en logboeken | `%LOCALAPPDATA%\CaptivoxRecorderFree` | jij en beheerders van de pc |
+| Recordings (`audio_mix.wav`) and transcripts | `%USERPROFILE%\Captivox\Opnames` (configurable) | you and the PC's administrators |
+| Settings and logs | `%LOCALAPPDATA%\CaptivoxRecorderFree` | you and the PC's administrators |
 
-Logboeken bevatten technische gegevens (apparaatnamen, tijden, foutmeldingen, mappen), geen gespreksinhoud. De meldingen in het programma (met de naam van een gesprek) worden 7 dagen bewaard in dezelfde map.
+Logs contain technical information (device names, times, error messages, folders), not the content of your conversations. The notifications shown in the app (which include a conversation's name) are kept for 7 days in the same folder.
 
-Kies je als opslagmap een map die met de cloud synchroniseert (OneDrive, Dropbox, een netwerkschijf), dan gaan je opnames via die dienst wel van je pc af. De standaardmap synchroniseert niet.
+If you choose a storage folder that syncs to the cloud (OneDrive, Dropbox, a network drive), your recordings will leave your PC through that service. The default folder does not sync.
 
-## Wanneer Captivox internet gebruikt
+## When Captivox uses the internet
 
-- **Bij de installatie**: `install-prereqs.ps1` haalt Python-pakketten op bij PyPI en kan Python en FFmpeg installeren via `winget`.
-- **Bij de eerste transcriptie**: de spraakmodellen komen van Hugging Face (Whisper en het uitlijnmodel voor de taal).
-- **Met de AMD-route**: `tools\Build-WhisperCppVulkanRuntime.ps1` haalt whisper.cpp op bij GitHub en een model bij Hugging Face.
+- **During installation**: the installer (or `install-prereqs.ps1` in the portable version) downloads:
+  - Python 3.10 from the python-build-standalone project, on GitHub;
+  - FFmpeg 8.1 (the gyan.dev build), on GitHub;
+  - the Python packages (WhisperX and its dependencies) from PyPI, and with an NVIDIA graphics card PyTorch's CUDA build from download.pytorch.org;
+  - the speech models: Whisper from Hugging Face, with an AMD graphics card also the whisper.cpp model for the fast option, from Hugging Face, and the model for the timestamps in your language (Dutch from Hugging Face; English, German, French, Spanish and Italian from download.pytorch.org).
+- **The first time you switch to another language**: the model for the timestamps in that language, from the same places.
+- **While transcribing**: when the PC is online, the model libraries may ask Hugging Face whether a model has a newer version. Only technical information goes along, such as the model name and library versions.
+- **Optional, advanced**: `tools\Build-WhisperCppVulkanRuntime.ps1` downloads whisper.cpp from GitHub. The normal installation does not use it.
 
-Daarbij gaan geen opnames of transcripten mee. Daarna werkt Captivox ook zonder internet.
+No recordings or transcripts are ever sent along with any of this. Once installed, Captivox also works without an internet connection.
 
-## Verwijderen
+## Deleting data
 
-- Een opname: kies op *Overleggen*, in het menu van het gesprek, **Naar de Prullenbak**, of gooi de map weg.
-- Alles: verwijder de programmamap, `%LOCALAPPDATA%\CaptivoxRecorderFree` en je opslagmap. De transcriptie-omgeving staat in `%LOCALAPPDATA%\CaptivoxRecorderFree\runtime`; gedownloade modellen staan in `%USERPROFILE%\.cache\huggingface` en `%USERPROFILE%\.cache\torch`.
+- One recording: on *Overleggen* (Meetings), open the conversation's menu and choose **Naar de Prullenbak** (Move to Recycle Bin), or delete its folder.
+- Everything: delete the program folder, `%LOCALAPPDATA%\CaptivoxRecorderFree` and your storage folder. The transcription runtime is in `%LOCALAPPDATA%\CaptivoxRecorderFree\runtime`; downloaded models are in `%USERPROFILE%\.cache\huggingface` and `%USERPROFILE%\.cache\torch`.
 
-## Opnemen van gesprekken
+## Recording conversations
 
-Een opname met stemmen en namen bevat persoonsgegevens van iedereen in het gesprek. Laat de anderen weten dat je opneemt en waarvoor, bewaar opnames niet langer dan nodig en deel ze alleen met wie ze echt nodig heeft. Captivox ruimt niets vanzelf op, tenzij je dat zelf aanzet bij *Instellingen*, *Opslag en bewaren*.
-
----
-
-**In English**: Captivox Recorder runs entirely on your PC. No account, no server, no telemetry. Recordings and transcripts stay in `%USERPROFILE%\Captivox\Opnames`; settings and logs in `%LOCALAPPDATA%\CaptivoxRecorderFree`. Internet is only used to install the runtime and to download models once; no audio or text is uploaded.
+A recording with voices and names contains personal data of everyone in the conversation. Let the others know that you are recording and why, don't keep recordings longer than you need to, and share them only with people who really need them. Captivox does not delete anything by itself, unless you turn that on under *Instellingen* (Settings), *Opslag en bewaren* (Storage and retention).

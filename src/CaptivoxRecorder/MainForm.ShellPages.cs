@@ -11,13 +11,15 @@ namespace LocalCaptureAgent;
 // Instellingen.
 public sealed partial class MainForm
 {
-    private static readonly CultureInfo DutchCulture = CultureInfo.GetCultureInfo("nl-NL");
-
     private TabPage? _todayTabPage;
     private TabPage? _notificationsTabPage;
     private TabPage? _settingsHubTabPage;
     private Label? _todayDateLabel;
     private Label? _todayGreetingLabel;
+    private ShellCard? _todayWelcomeCard;
+    // De regels van de welkomstkaart breken af op de breedte van de kaart (niet op een vaste maat: dan was de kaart te laag
+    // als een regel in een andere taal vaker afbrak).
+    private readonly List<Label> _todayWelcomeLines = new();
     private ShellCard? _todayNextMeetingCard;
     private ShellCard? _todayWaitingCard;
     private ShellCard? _todayNotificationsCard;
@@ -76,12 +78,11 @@ public sealed partial class MainForm
         return Math.Max(minimum, lines * (ShellFont("Segoe UI", size, style, GraphicsUnit.Point).Height + 5));
     }
 
-    // De teksten van de schil zijn al gewone taal en vaak dynamisch: de oude vertaalslag slaat ze over.
+    // Meteen in de taal van de interface (UiText), zodat de maat van het label vanaf het begin klopt.
     private static Label ShellLabel(string text, float size = 10F, FontStyle style = FontStyle.Regular, Color? color = null, Padding? margin = null)
         => new()
         {
-            AccessibleDescription = "skip-ui-localization",
-            Text = text,
+            Text = UiText.T(text),
             AutoSize = true,
             Font = ShellFont("Segoe UI", size, style, GraphicsUnit.Point),
             ForeColor = color ?? ShellPalette.Text,
@@ -95,8 +96,7 @@ public sealed partial class MainForm
     private static Label ShellLineLabel(string text, float size = 10F, FontStyle style = FontStyle.Regular, Color? color = null, int height = 22, bool rowLabel = false)
     {
         Label label = rowLabel ? new ShellRowLabel() : new Label();
-        label.AccessibleDescription = "skip-ui-localization";
-        label.Text = text;
+        label.Text = UiText.T(text);
         label.AutoSize = false;
         label.AutoEllipsis = true;
         label.Height = ShellLineHeight(size, style, height);
@@ -114,7 +114,7 @@ public sealed partial class MainForm
     private int TodayWaitingTotal() => _meetingsWaitingCount;
 
     private static Label ShellSectionTitle(string text)
-        => ShellLabel(text.ToUpperInvariant(), 8.5F, FontStyle.Bold, ShellPalette.TextSecondary, new Padding(0, 0, 0, 10));
+        => ShellLabel(UiText.T(text).ToUpper(UiText.Culture), 8.5F, FontStyle.Bold, ShellPalette.TextSecondary, new Padding(0, 0, 0, 10));
 
     // Twee regels (kop en toelichting) in een vak dat de breedte van zijn cel vult en netjes afkapt.
     private static Control ShellTwoLines(string title, string detail, float titleSize = 10.5F)
@@ -155,7 +155,7 @@ public sealed partial class MainForm
     {
         var button = new Button
         {
-            Text = text,
+            Text = UiText.T(text),
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             MinimumSize = new Size(0, 40),
@@ -201,9 +201,13 @@ public sealed partial class MainForm
         var left = ShellStack();
         left.Margin = new Padding(0, 0, 16, 0);
         var right = ShellStack();
+        _todayWelcomeCard = ShellNewCard();
+        _todayWelcomeCard.Visible = false;
+        _todayWelcomeCard.SizeChanged += (_, _) => FitTodayWelcomeLines();
         _todayNextMeetingCard = ShellNewCard();
         _todayWaitingCard = ShellNewCard();
         _todayNotificationsCard = ShellNewCard();
+        ShellStackAdd(left, _todayWelcomeCard);
         ShellStackAdd(left, _todayNextMeetingCard);
         ShellStackAdd(left, _todayWaitingCard);
         ShellStackAdd(right, _todayNotificationsCard);
@@ -237,10 +241,11 @@ public sealed partial class MainForm
     {
         if (_todayGreetingLabel is null || _todayDateLabel is null) return;
         var now = DateTime.Now;
-        var date = now.ToString("dddd d MMMM", DutchCulture);
+        var date = now.ToString(UiText.DayMonthFormat, UiText.Culture);
         _todayDateLabel.Text = char.ToUpperInvariant(date[0]) + date[1..];
         _todayGreetingLabel.Text = now.Hour < 12 ? "Goedemorgen" : now.Hour < 18 ? "Goedemiddag" : "Goedenavond";
 
+        RenderTodayWelcome();
         RenderTodayNextMeeting();
         RenderTodayWaiting();
         RenderTodayNotifications();
@@ -257,6 +262,65 @@ public sealed partial class MainForm
 
         RefreshShellSystemStatus();
         UpdateShellTray();
+    }
+
+    // Nog geen enkele opname: een korte kaart met de eerste stappen. Verdwijnt zodra er een overleg is.
+    private void RenderTodayWelcome()
+    {
+        var card = _todayWelcomeCard;
+        if (card is null) return;
+        var show = _meetingsTotalCount == 0 && _session is null;
+        if (!show)
+        {
+            if (card.Visible) card.Visible = false;
+            return;
+        }
+
+        card.SuspendLayout();
+        ShellClearControls(card);
+        var stack = ShellStack();
+        ShellStackAdd(stack, ShellSectionTitle("Aan de slag"));
+        _todayWelcomeLines.Clear();
+        var welcome = ShellLabel(UiText.F("Welkom bij {0}. Zo maak je je eerste opname:", Branding.DisplayName), 10.5F, FontStyle.Bold, ShellPalette.Text, new Padding(0, 0, 0, 8));
+        _todayWelcomeLines.Add(welcome);
+        ShellStackAdd(stack, welcome);
+        foreach (var step in new[]
+        {
+            "1. Kies bij Instellingen, Opnemen je microfoon en het apparaat waarop je de anderen hoort.",
+            "2. Druk op Opname starten (of Ctrl+Shift+F9).",
+            "3. Of voeg een bestaand bestand toe via Overleggen, Audio importeren.",
+        })
+        {
+            var line = ShellLabel(step, 10F, FontStyle.Regular, ShellPalette.Text, new Padding(0, 0, 0, 4));
+            _todayWelcomeLines.Add(line);
+            ShellStackAdd(stack, line);
+        }
+
+        var actions = new FlowLayoutPanel { AutoSize = true, WrapContents = true, BackColor = Color.Transparent, Margin = new Padding(0, 10, 0, 0) };
+        var devices = ShellButton("Apparaten kiezen", primary: false, (_, _) => NavigateToSettings("opnemen"));
+        devices.Margin = new Padding(0, 0, 8, 0);
+        actions.Controls.Add(devices);
+        var meetings = ShellButton("Naar Overleggen", primary: false, (_, _) => NavigateShell(ShellNavMeetings));
+        meetings.Margin = new Padding(0);
+        actions.Controls.Add(meetings);
+        ShellStackAdd(stack, actions);
+        card.Controls.Add(stack);
+        FitTodayWelcomeLines();
+        card.ResumeLayout(true);
+        card.Visible = true;
+    }
+
+    private void FitTodayWelcomeLines()
+    {
+        var card = _todayWelcomeCard;
+        if (card is null || _todayWelcomeLines.Count == 0) return;
+        var width = card.ClientSize.Width - card.Padding.Horizontal - LogicalToDeviceUnits(8);
+        if (width <= LogicalToDeviceUnits(120)) width = LogicalToDeviceUnits(460);
+        var size = new Size(Math.Min(width, LogicalToDeviceUnits(560)), 0);
+        foreach (var line in _todayWelcomeLines)
+        {
+            if (line.MaximumSize != size) line.MaximumSize = size;
+        }
     }
 
     private void RenderTodayNextMeeting()
@@ -302,7 +366,7 @@ public sealed partial class MainForm
         else if (reviews > 0)
         {
             // Opnames waarbij het opnemen of uitschrijven misging of onderbroken werd: opnieuw uitschrijven kan vanuit Overleggen.
-            ShellStackAdd(stack, TodayWaitingRow(ShellIcon.Calendar, ShellPalette.WaitSoft, ShellPalette.Wait, $"{reviews} {(reviews == 1 ? "opname vraagt" : "opnames vragen")} aandacht", "Mislukt of onderbroken; je kunt opnieuw laten uitschrijven",
+            ShellStackAdd(stack, TodayWaitingRow(ShellIcon.Calendar, ShellPalette.WaitSoft, ShellPalette.Wait, reviews == 1 ? UiText.T("1 opname vraagt aandacht") : UiText.F("{0} opnames vragen aandacht", reviews), "Mislukt of onderbroken; je kunt opnieuw laten uitschrijven",
                 "Bekijken", true, (_, _) => ShowWaitingMeetings()));
         }
         else
@@ -368,7 +432,7 @@ public sealed partial class MainForm
         foreach (var item in items)
         {
             ShellStackAdd(stack, ShellLineLabel(item.Title, 10F, FontStyle.Bold, ShellPalette.Text, 22));
-            ShellStackAdd(stack, ShellLineLabel(item.At.LocalDateTime.ToString("HH:mm", DutchCulture) + "  |  " + item.Message, 9.25F, FontStyle.Regular, ShellPalette.TextSecondary, 22));
+            ShellStackAdd(stack, ShellLineLabel(item.At.LocalDateTime.ToString("HH:mm", UiText.Culture) + "  |  " + item.Message, 9.25F, FontStyle.Regular, ShellPalette.TextSecondary, 22));
         }
 
         var all = new LinkLabel { Text = "Alle meldingen", AutoSize = true, Margin = new Padding(0, 8, 0, 0), LinkColor = ShellPalette.Accent, ActiveLinkColor = ShellPalette.Accent, Font = ShellFont("Segoe UI", 9.5F, FontStyle.Bold, GraphicsUnit.Point) };
@@ -382,7 +446,7 @@ public sealed partial class MainForm
     private async Task ChooseOtherSystemDeviceAsync()
     {
         if (_session is null || _stopFinalizeInProgress) return;
-        var answer = ShowOwnedMessage(this, "De opname stopt en wordt bewaard. Daarna kies je onder Instellingen, Opnemen het apparaat waar Teams op afspeelt, en start je een nieuwe opname." + Environment.NewLine + Environment.NewLine + "Opname nu stoppen?", "Ander apparaat kiezen", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2);
+        var answer = ShowOwnedMessage(this, UiText.T("De opname stopt en wordt bewaard. Daarna kies je onder Instellingen, Opnemen het apparaat waar Teams op afspeelt, en start je een nieuwe opname.") + Environment.NewLine + Environment.NewLine + UiText.T("Opname nu stoppen?"), "Ander apparaat kiezen", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2);
         if (answer != DialogResult.Yes) return;
         await RunRecordingUiActionAsync("Opname stoppen", StopRecordingAsync);
         if (_session is null) NavigateToSettings("opnemen");
@@ -395,6 +459,10 @@ public sealed partial class MainForm
         {
             SetShellSystemStatus(false, "Kies je apparaten");
         }
+        else if (TranscriptionRuntimeStatus.IsRuntimeMissing(_appSettings.Worker))
+        {
+            SetShellSystemStatus(false, TranscriptionRuntimeStatus.ShortStatus);
+        }
         else
         {
             SetShellSystemStatus(true, "Geen problemen gezien");
@@ -404,8 +472,9 @@ public sealed partial class MainForm
     // Waar een klik op de systeemstatus heen gaat: naar de plek waar het probleem speelt; in orde naar het systeemoverzicht.
     private void OpenShellSystemStatusTarget()
     {
-        var text = _shellSystemNavButton?.Text ?? string.Empty;
+        var text = _shellSystemStatusSource;
         if (text == "Kies je apparaten") NavigateToSettings("opnemen");
+        else if (text == TranscriptionRuntimeStatus.ShortStatus) ShowOwnedMessage(this, UiText.T(TranscriptionRuntimeStatus.MissingMessage) + Environment.NewLine + Environment.NewLine + UiText.T("Opnemen werkt wel; uitschrijven kan pas weer na het herstellen."), TranscriptionRuntimeStatus.ShortStatus, MessageBoxButtons.OK, MessageBoxIcon.Warning);
         else NavigateShell(ShellNavSystem);
     }
 
@@ -519,12 +588,12 @@ public sealed partial class MainForm
         {
             if (!active) return ("Niet actief", ShellPalette.TextSecondary, false);
             if (state is "Gestopt" or "Afgekapt") return ("Gestopt", ShellPalette.Bad, false);
-            if (state.StartsWith("Stil", StringComparison.Ordinal)) return ("Geen geluid " + state[4..].Trim(), ShellPalette.Wait, false);
+            if (state.StartsWith("Stil", StringComparison.Ordinal)) return (UiText.F("Geen geluid {0}", state[4..].Trim()), ShellPalette.Wait, false);
             // Bij de start staat het laatste signaal op de starttijd: dat is nog geen geluid.
             if (lastSignal <= startedAt) return ("Wacht op geluid", ShellPalette.TextSecondary, false);
             var quiet = nowOffset - lastSignal;
             if (quiet <= TimeSpan.FromSeconds(15)) return ("Geluid komt binnen", ShellPalette.Ok, true);
-            return ($"Even stil ({Math.Min(9999, (int)quiet.TotalSeconds)}s)", ShellPalette.TextSecondary, false);
+            return (UiText.F("Even stil ({0}s)", Math.Min(9999, (int)quiet.TotalSeconds)), ShellPalette.TextSecondary, false);
         }
 
         var mic = Plain(_shellHealthMic, _lastMicSignalAt);
@@ -549,12 +618,12 @@ public sealed partial class MainForm
         var lines = new List<string>();
         if (ShellRecordingProblem())
         {
-            lines.Add(_session!.CapacityReached ? "Het bestand is vol: nieuwe audio wordt niet meer opgeslagen. Stop en start een nieuwe opname." : "De opname is gestopt: " + (_session.CaptureFailureSummary ?? "onbekende fout") + ". Stop en start opnieuw.");
+            lines.Add(_session!.CapacityReached ? "Het bestand is vol: nieuwe audio wordt niet meer opgeslagen. Stop en start een nieuwe opname." : UiText.F("De opname is gestopt: {0}. Stop en start opnieuw.", UiText.T(_session.CaptureFailureSummary ?? "onbekende fout")));
         }
         else if (active)
         {
             lines.Add(mic.Hearing && system.Hearing ? "De opname loopt en het geluid komt binnen." : "De opname loopt.");
-            if (_session!.RemainingCapacity is { } remaining) lines.Add($"Ruimte in het bestand: nog ongeveer {Math.Max(0, (int)remaining.TotalHours)} uur {Math.Max(0, remaining.Minutes)} minuten.");
+            if (_session!.RemainingCapacity is { } remaining) lines.Add(UiText.F("Ruimte in het bestand: nog ongeveer {0} uur {1} minuten.", Math.Max(0, (int)remaining.TotalHours), Math.Max(0, remaining.Minutes)));
         }
         else
         {
@@ -563,7 +632,7 @@ public sealed partial class MainForm
 
         var free = RecordingFreeSpaceText();
         if (free.Length > 0) lines.Add(free);
-        _recordingPageChecks.Text = string.Join(Environment.NewLine, lines);
+        _recordingPageChecks.Text = string.Join(Environment.NewLine, lines.Select(UiText.T));
     }
 
     // Hoogstens eens per halve minuut kijken (de pagina wordt elke seconde bijgewerkt).
@@ -583,7 +652,7 @@ public sealed partial class MainForm
             if (string.IsNullOrWhiteSpace(root)) return string.Empty;
             var drive = new DriveInfo(root);
             var gb = drive.AvailableFreeSpace / (1024d * 1024 * 1024);
-            return gb < 5 ? $"Let op: nog maar {gb:0.0} GB vrij op {drive.Name}." : $"Schijfruimte: {gb:0} GB vrij op {drive.Name}.";
+            return gb < 5 ? UiText.F("Let op: nog maar {0:0.0} GB vrij op {1}.", gb, drive.Name) : UiText.F("Schijfruimte: {0:0} GB vrij op {1}.", gb, drive.Name);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
@@ -624,14 +693,14 @@ public sealed partial class MainForm
         foreach (var item in items)
         {
             var local = item.At.LocalDateTime;
-            var day = local.ToString("dddd d MMMM", DutchCulture);
+            var day = local.ToString(UiText.DayMonthFormat, UiText.Culture);
             if (day != lastDay)
             {
                 lastDay = day;
-                _notificationsList.Controls.Add(ShellLabel((char.ToUpperInvariant(day[0]) + day[1..]).ToUpperInvariant(), 8.5F, FontStyle.Bold, ShellPalette.TextSecondary, new Padding(0, 12, 0, 6)));
+                _notificationsList.Controls.Add(ShellLabel(day.ToUpper(UiText.Culture), 8.5F, FontStyle.Bold, ShellPalette.TextSecondary, new Padding(0, 12, 0, 6)));
             }
 
-            var title = ShellLabel(local.ToString("HH:mm", DutchCulture) + "   " + item.Title, 10F, FontStyle.Bold, ShellPalette.Text, new Padding(0, 4, 0, 0));
+            var title = ShellLabel(local.ToString("HH:mm", UiText.Culture) + "   " + item.Title, 10F, FontStyle.Bold, ShellPalette.Text, new Padding(0, 4, 0, 0));
             var message = ShellLabel(item.Message, 9.75F, FontStyle.Regular, ShellPalette.TextSecondary, new Padding(46, 2, 0, 6));
             message.MaximumSize = new Size(width - 46, 0);
             _notificationsList.Controls.Add(title);
@@ -653,7 +722,7 @@ public sealed partial class MainForm
             {
                 _shellBellCount = unseen;
                 _shellBellButton?.Invalidate();
-                if (_shellBellButton is not null) _shellBellButton.AccessibleName = unseen > 0 ? $"Meldingen, {unseen} nieuw" : "Meldingen";
+                if (_shellBellButton is not null) _shellBellButton.AccessibleName = unseen > 0 ? UiText.F("Meldingen, {0} nieuw", unseen) : UiText.T("Meldingen");
             }
         }
         catch (Exception ex)

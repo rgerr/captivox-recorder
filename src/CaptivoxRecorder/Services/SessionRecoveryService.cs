@@ -62,7 +62,7 @@ internal static class SessionRecoveryService
 
                 AtomicFileWriter.WriteAllText(manifestPath, JsonSerializer.Serialize(manifest, JsonOptions), System.Text.Encoding.UTF8);
                 var sessionLogPath = Path.Combine(dir, "session.log");
-                File.AppendAllText(sessionLogPath, $"[{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss}] Sessierecovery: opname als interrupted gemarkeerd na herstart.{Environment.NewLine}");
+                File.AppendAllText(sessionLogPath, $"[{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss}] Sessierecovery: opname als interrupted gemarkeerd na herstart.{Environment.NewLine}"); // geen vertaling
                 recovered++;
             }
         }

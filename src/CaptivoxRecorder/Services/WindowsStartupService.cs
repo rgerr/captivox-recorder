@@ -10,6 +10,13 @@ internal static class WindowsStartupService
 
     public static void Apply(bool enabled, bool startMinimized)
     {
+        // Een testexemplaar met een eigen gegevensmap (zie Branding.AppDataOverrideVariable) laat het opstarten met Windows
+        // van de echte installatie ongemoeid: dezelfde registerwaarde zou anders worden overschreven of verwijderd.
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(Branding.AppDataOverrideVariable)))
+        {
+            return;
+        }
+
         using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true) ?? Registry.CurrentUser.CreateSubKey(RunKeyPath);
         if (key is null)
         {

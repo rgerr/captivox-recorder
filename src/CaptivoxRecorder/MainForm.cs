@@ -206,6 +206,9 @@ public sealed partial class MainForm : Form
         _launchMinimizedRequested = launchMinimized;
         _notificationDispatcher = new NotificationDispatcher(_notifyIcon, () => _appSettings);
         SuspendLayout();
+        // Zo vroeg mogelijk: alles wat hierna aan het venster wordt toegevoegd, krijgt meteen de taal van de interface, nog
+        // voordat de indeling wordt berekend (anders bleven kaarten op de maat van de Nederlandse tekst).
+        UiTextBinder.Attach(this);
 
         Text = Branding.DisplayName;
         Icon = Branding.GetAppIconOrDefault();
@@ -270,7 +273,7 @@ public sealed partial class MainForm : Form
         _settingsButton.Font = new Font("Segoe UI Symbol", 11F, FontStyle.Bold, GraphicsUnit.Point);
         _settingsButton.Margin = new Padding(0);
         _settingsButton.FlatAppearance.BorderColor = Color.FromArgb(214, 222, 230);
-        _toolTip.SetToolTip(_settingsButton, "Instellingen en admin");
+        SetUiToolTip(_settingsButton, "Instellingen en admin");
         _settingsButton.AccessibleName = "Instellingen en admin";
         _settingsButton.AccessibleDescription = "Open instellingen en beheeropties.";
         StyleShellSettingsButton();
@@ -332,7 +335,6 @@ public sealed partial class MainForm : Form
         _selectedMicLabel.Text = "Audioapparaten laden...";
         _selectedSystemLabel.Text = "Audioapparaten laden...";
         _workerStatusLabel.Text = "Bibliotheekscan wacht tot na vensterstart";
-        MarkDynamicUiValuesForLocalizationSkip();
         ApplyCurrentLanguageToUi();
         _startupConstructorElapsedMs = constructorWatch.ElapsedMilliseconds;
         ResumeLayout(true);
@@ -513,6 +515,7 @@ public sealed partial class MainForm : Form
         var settingsHubTab = BuildSettingsHubPage();
         var recordingTab = BuildRecordingPage();
         var meetingsTab = BuildMeetingsPage();
+        var proOfferTab = BuildProOfferPage();
         tabs.TabPages.Add(todayTab);
         tabs.TabPages.Add(recorderTab);
         tabs.TabPages.Add(libraryTab);
@@ -521,6 +524,7 @@ public sealed partial class MainForm : Form
         tabs.TabPages.Add(settingsHubTab);
         tabs.TabPages.Add(recordingTab);
         tabs.TabPages.Add(meetingsTab);
+        tabs.TabPages.Add(proOfferTab);
         RegisterShellPage(ShellNavToday, todayTab);
         // Overleggen is de nieuwe pagina; de oude bibliotheek blijft bereikbaar (link onderaan) tot fase 4.
         RegisterShellPage(ShellNavMeetings, meetingsTab);
@@ -528,6 +532,7 @@ public sealed partial class MainForm : Form
         RegisterShellPage(ShellNavNotifications, notificationsTab);
         RegisterShellPage(ShellNavSettings, settingsHubTab);
         RegisterShellPage(ShellNavSystem, statusTab);
+        RegisterShellPage(ShellNavProOffer, proOfferTab);
         tabs.SelectedTab = todayTab;
         tabs.SelectedIndexChanged += async (_, _) =>
         {
@@ -708,7 +713,7 @@ public sealed partial class MainForm : Form
         if (_mainTabs is null) return;
         foreach (TabPage page in _mainTabs.TabPages)
         {
-            if (!string.Equals(page.Text, mainTabText, StringComparison.OrdinalIgnoreCase)) continue;
+            if (!string.Equals(page.Text, mainTabText, StringComparison.OrdinalIgnoreCase) && !string.Equals(page.Text, UiText.T(mainTabText), StringComparison.OrdinalIgnoreCase)) continue;
             _mainTabs.SelectedTab = page;
             if (!string.IsNullOrWhiteSpace(nestedTabText)) SelectNestedTab(page, nestedTabText);
             return;
@@ -723,7 +728,7 @@ public sealed partial class MainForm : Form
             {
                 foreach (TabPage page in tabs.TabPages)
                 {
-                    if (string.Equals(page.Text, tabText, StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(page.Text, tabText, StringComparison.OrdinalIgnoreCase) || string.Equals(page.Text, UiText.T(tabText), StringComparison.OrdinalIgnoreCase))
                     {
                         tabs.SelectedTab = page;
                         return true;
@@ -1723,7 +1728,7 @@ public sealed partial class MainForm : Form
             SetStatus("Fout bij laden apparaten.", ex.ToString(), isError: true);
             if (showMessageBoxOnFailure)
             {
-                MessageBox.Show(this, ex.Message, "Apparaten laden mislukt", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                ShowOwnedMessage(this, ex.Message, "Apparaten laden mislukt", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             else
             {
@@ -1761,24 +1766,30 @@ public sealed partial class MainForm : Form
     {
         if (_micComboBox.SelectedItem is not DeviceInfo mic || _systemComboBox.SelectedItem is not DeviceInfo system)
         {
-            MessageBox.Show(this, "Selecteer eerst zowel een microfoon als een systeemaudio-device.", "Apparaten ontbreken", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            ShowOwnedMessage(this, "Selecteer eerst zowel een microfoon als een systeemaudio-device.", "Apparaten ontbreken", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
         try
         {
             var preflight = await Task.Run(() => PreflightCheckService.Run(_outputRootTextBox.Text, mic.Id, system.Id, _appSettings));
-            SetStatus(preflight.Success ? (preflight.HasWarnings ? "Preflight met waarschuwingen." : "Preflight geslaagd.") : "Preflight mislukt.", preflight.Details, isError: !preflight.Success || preflight.HasWarnings);
+            SetStatus(preflight.Success ? (preflight.HasWarnings ? "Controle voor de opname: let op." : "Controle voor de opname: in orde.") : "Opnemen kan niet starten.", preflight.Details, isError: !preflight.Success || preflight.HasWarnings);
+            // De technische details (paden, formaten, instellingen) alleen in het logboek; de gebruiker krijgt korte zinnen.
+            if (!preflight.Success || preflight.HasWarnings)
+            {
+                AppRuntime.LogMessage("Controle voor de opname:" + Environment.NewLine + preflight.Details);
+            }
 
             if (!preflight.Success)
             {
-                MessageBox.Show(this, preflight.Details, "Preflight mislukt", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                var problems = preflight.UserErrors.Count > 0 ? preflight.UserErrors : new[] { "Er ging iets mis bij de controle voor de opname." };
+                ShowOwnedMessage(this, string.Join(Environment.NewLine + Environment.NewLine, problems) + Environment.NewLine + Environment.NewLine + "De details staan in het logboek.", "Opnemen kan niet starten", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            if (preflight.HasWarnings)
+            if (preflight.HasWarnings && preflight.UserWarnings.Count > 0)
             {
-                var result = MessageBox.Show(this, preflight.Details + Environment.NewLine + Environment.NewLine + "Toch doorgaan met opnemen?", "Preflight-waarschuwing", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                var result = ShowOwnedMessage(this, string.Join(Environment.NewLine + Environment.NewLine, preflight.UserWarnings) + Environment.NewLine + Environment.NewLine + "Toch opnemen?", "Opnemen", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
                 if (result != DialogResult.Yes)
                 {
                     return;
@@ -1835,7 +1846,7 @@ public sealed partial class MainForm : Form
                 AppRuntime.LogException("Scherm bijwerken na opnamestart mislukt; de opname loopt door", uiException);
             }
 
-            _notifyIcon.ShowBalloonTip(2500, Branding.DisplayName, "Opname gestart.", ToolTipIcon.Info);
+            _notifyIcon.ShowBalloonTip(2500, Branding.DisplayName, UiText.T("Opname gestart."), ToolTipIcon.Info);
             ScheduleLibraryRefreshAfterRecordingStateChange("opname gestart");
         }
         catch (Exception ex)
@@ -1855,7 +1866,7 @@ public sealed partial class MainForm : Form
             ResetMeters();
             SetRunningState(false);
             SetStatus("Starten mislukt.", ex.ToString(), isError: true);
-            MessageBox.Show(this, ex.ToString(), "Opname starten mislukt", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            ShowOwnedMessage(this, ex.ToString(), "Opname starten mislukt", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -1922,7 +1933,7 @@ public sealed partial class MainForm : Form
             : "Preflight mislukt.";
 
         SetStatus(summary, report.Details, isError: !report.Success || report.HasWarnings);
-        MessageBox.Show(this, report.Details, summary, MessageBoxButtons.OK, report.Success ? (report.HasWarnings ? MessageBoxIcon.Warning : MessageBoxIcon.Information) : MessageBoxIcon.Error);
+        ShowOwnedMessage(this, report.Details, summary, MessageBoxButtons.OK, report.Success ? (report.HasWarnings ? MessageBoxIcon.Warning : MessageBoxIcon.Information) : MessageBoxIcon.Error);
     }
 
     private void OpenWindowsSoundSettings()
@@ -1938,7 +1949,7 @@ public sealed partial class MainForm : Form
         catch (Exception ex)
         {
             AppRuntime.LogException("Open sound settings failed", ex);
-            MessageBox.Show(this, ex.Message, "Geluidsinstellingen openen mislukt", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            ShowOwnedMessage(this, ex.Message, "Geluidsinstellingen openen mislukt", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -1966,11 +1977,11 @@ public sealed partial class MainForm : Form
         _recordToggleButton.Text = "Opname afronden...";
         _recordToggleButton.VisualState = PrimaryActionVisualState.Busy;
         _recordToggleButton.Enabled = false;
-        _trayToggleRecordItem.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Opname afronden...");
+        _trayToggleRecordItem.Text = UiText.T("Opname afronden...");
         _trayToggleRecordItem.Enabled = false;
 
         SetStatus("Opname wordt gestopt...", "Capture wordt netjes afgerond en gemixt. De interface blijft beschikbaar tijdens afronden.");
-        UpdateRecordingHealthLabels("Afronden", "Afronden", "Afronden", "Mixen en READY schrijven");
+        UpdateRecordingHealthLabels("Wordt afgerond", "Wordt afgerond", "Wordt afgerond", "Mixen en READY schrijven");
 
         _ = FinalizeStopRecordingAsync(session);
         await Task.Yield();
@@ -2008,7 +2019,7 @@ public sealed partial class MainForm : Form
                 _manifest = completed;
                 SetStatus("Opname afgerond.", BuildCompletionDetails(completed));
                 UpdateRecordingHealthLabels("Idle", "Niet actief", "Niet actief", "Wacht op transcriptie");
-                _notifyIcon.ShowBalloonTip(2500, Branding.DisplayName, "Opname afgerond.", ToolTipIcon.Info);
+                _notifyIcon.ShowBalloonTip(2500, Branding.DisplayName, UiText.T("Opname afgerond."), ToolTipIcon.Info);
                 if (_appSettings.Worker.WhisperXEnabled)
                 {
                     _ = _notificationDispatcher.NotifyAsync(NotificationEventType.RecordingStoppedWaitingForTranscription, "Opname bewaard", "Captivox schrijft het overleg nu uit.", ToolTipIcon.Info);
@@ -2022,7 +2033,7 @@ public sealed partial class MainForm : Form
                 _lastStopFailed = true;
                 var detail = failure?.ToString() ?? "Onbekende fout tijdens afronden van de opname.";
                 SetStatus("Stoppen of mixen mislukt.", detail, isError: true);
-                MessageBox.Show(this, detail, "Opname stoppen mislukt", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                ShowOwnedMessage(this, detail, "Opname stoppen mislukt", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
         finally
@@ -2119,11 +2130,11 @@ public sealed partial class MainForm : Form
         _systemGainNumeric.Enabled = !isRunning;
 
         // De schermlezer hoort wat de knop nu doet; de sneltoets staat erbij.
-        _recordToggleButton.AccessibleName = _recordToggleButton.Text;
-        _toolTip.SetToolTip(_recordToggleButton, _recordToggleButton.Text + " (Ctrl+Shift+F9)");
-        _trayToggleRecordItem.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, isRunning ? "Opname stoppen" : "Opname starten");
+        _recordToggleButton.AccessibleName = UiText.T(_recordToggleButton.Text);
+        SetUiToolTip(_recordToggleButton, UiText.F("{0} (Ctrl+Shift+F9)", UiText.T(_recordToggleButton.Text)));
+        _trayToggleRecordItem.Text = UiText.T(isRunning ? "Opname stoppen" : "Opname starten");
         _trayToggleRecordItem.Enabled = _recordToggleButton.Enabled;
-        _trayShowHideItem.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, Visible ? "Venster verbergen" : "Venster tonen");
+        _trayShowHideItem.Text = UiText.T(Visible ? "Venster verbergen" : "Venster tonen");
         UpdateShellRecordingState(isRunning);
     }
 
@@ -2307,7 +2318,8 @@ public sealed partial class MainForm : Form
         _appSettings.Hardware.LastFallbackReason = assessment.TranscriptionProfileReason;
 
         var detectedProfile = HardwareAssessmentService.NormalizeTranscriptionProfile(assessment.RecommendedTranscriptionProfile);
-        if (!string.IsNullOrWhiteSpace(detectedProfile) && !string.Equals(detectedProfile, "auto", StringComparison.OrdinalIgnoreCase))
+        // De zelf gekozen snelle AMD-route blijft staan.
+        if (!_appSettings.Worker.AmdGpuFastRoute && !string.IsNullOrWhiteSpace(detectedProfile) && !string.Equals(detectedProfile, "auto", StringComparison.OrdinalIgnoreCase))
         {
             _appSettings.Worker.TranscriptionProfile = detectedProfile;
         }
@@ -2415,6 +2427,9 @@ public sealed partial class MainForm : Form
         {
             var expectedVersion = AppRuntime.GetWorkerCompatibilityVersionTag();
             var currentScriptFullPath = Path.GetFullPath(currentWorkerScript);
+            var isolatedDataRoot = string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(Branding.AppDataOverrideVariable))
+                ? null
+                : AppRuntime.GetAppDataDirectory().TrimEnd('\\');
             using var searcher = new ManagementObjectSearcher("SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name = 'powershell.exe' OR Name = 'pwsh.exe'");
             using var results = searcher.Get();
             foreach (ManagementObject processInfo in results)
@@ -2427,6 +2442,12 @@ public sealed partial class MainForm : Form
 
                 var commandLine = Convert.ToString(processInfo["CommandLine"] ?? string.Empty) ?? string.Empty;
                 if (commandLine.IndexOf(Branding.WorkerScriptName, StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    continue;
+                }
+
+                // Een testexemplaar met een eigen gegevensmap ruimt alleen workers van die map op, nooit die van de echte installatie.
+                if (isolatedDataRoot is not null && commandLine.IndexOf(isolatedDataRoot, StringComparison.OrdinalIgnoreCase) < 0)
                 {
                     continue;
                 }
@@ -2698,12 +2719,12 @@ public sealed partial class MainForm : Form
                 {
                     var exitCode = process.ExitCode;
                     exitMessage = exitCode == 0
-                        ? "Background worker exited with code 0; READY-monitor is netjes gestopt."
-                        : $"Background worker exited with code {exitCode}; app-monitor start de READY-worker opnieuw indien verwerking nodig blijft. Controleer worker.log/diagnostics alleen als sessies niet verdergaan.";
+                        ? "Background worker exited with code 0; READY-monitor is netjes gestopt." // geen vertaling
+                        : $"Background worker exited with code {exitCode}; app-monitor start de READY-worker opnieuw indien verwerking nodig blijft. Controleer worker.log/diagnostics alleen als sessies niet verdergaan."; // geen vertaling
                 }
                 catch (InvalidOperationException)
                 {
-                    exitMessage = "Background worker exited; exitcode was niet meer opvraagbaar. App-monitor probeert de READY-worker beschikbaar te houden.";
+                    exitMessage = "Background worker exited; exitcode was niet meer opvraagbaar. App-monitor probeert de READY-worker beschikbaar te houden."; // geen vertaling
                 }
 
                 AppRuntime.LogMessage(exitMessage);
@@ -2757,16 +2778,25 @@ public sealed partial class MainForm : Form
     }
 
     // Bij een schrijfbevestiging staat de standaardknop op Nee (een losse Enter mag niets doorvoeren).
+    // De tekst en de titel in de taal van de interface (een samengestelde tekst regel voor regel, zie UiText).
     private static DialogResult ShowOwnedMessage(IWin32Window? owner, string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon, MessageBoxDefaultButton defaultButton)
     {
+        text = UiText.T(text);
+        caption = UiText.T(caption);
         var resolvedOwner = ResolveDialogOwner(owner);
         return resolvedOwner is null
             ? MessageBox.Show(text, caption, buttons, icon, defaultButton)
             : MessageBox.Show(resolvedOwner, text, caption, buttons, icon, defaultButton);
     }
 
+    // Een tip bij een onderdeel, in de taal van de interface.
+    private void SetUiToolTip(Control control, string? text)
+        => _toolTip.SetToolTip(control, string.IsNullOrEmpty(text) ? string.Empty : UiText.T(text));
+
     private static DialogResult ShowOwnedMessage(IWin32Window? owner, string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon)
     {
+        text = UiText.T(text);
+        caption = UiText.T(caption);
         var resolvedOwner = ResolveDialogOwner(owner);
         return resolvedOwner is null
             ? MessageBox.Show(text, caption, buttons, icon)
@@ -2794,14 +2824,14 @@ public sealed partial class MainForm : Form
         var helperScript = AppRuntime.FindProjectFile(Path.Combine("workers", "transcribe_with_whisperx_recorder.py"));
         if (string.IsNullOrWhiteSpace(helperScript) || !File.Exists(helperScript))
         {
-            ShowOwnedMessage(owner, "Python helper-script niet gevonden. Zorg dat de volledige bundle aanwezig is of gebruik de publish-map waarin de workers zijn meegekopieerd. Voor dependency-bootstrap kun je ook install-prereqs.ps1 uit de bundle-root gebruiken.", "Verbindingstest mislukt", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            ShowOwnedMessage(owner, TranscriptionRuntimeStatus.MissingMessage + Environment.NewLine + Environment.NewLine + "Het transcriptiescript ontbreekt in de programmamap.", "Verbindingstest mislukt", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
         var pythonExe = _appSettings.Worker.PythonExe?.Trim();
         if (string.IsNullOrWhiteSpace(pythonExe) || !File.Exists(pythonExe))
         {
-            ShowOwnedMessage(owner, $"Python executable niet gevonden:{Environment.NewLine}{pythonExe}{Environment.NewLine}{Environment.NewLine}Gebruik install-prereqs.ps1 uit de bundle-root of stel in Instellingen een geldig venv-pad in.", "Verbindingstest mislukt", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            ShowOwnedMessage(owner, $"{TranscriptionRuntimeStatus.MissingMessage}{Environment.NewLine}{Environment.NewLine}Python niet gevonden: {pythonExe}", "Verbindingstest mislukt", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
@@ -2838,7 +2868,7 @@ public sealed partial class MainForm : Form
         var effectiveDiarizationEnabled = Branding.IsPro && _appSettings.Worker.DiarizationEnabled;
         var effectiveDiarizationModel = effectiveDiarizationEnabled ? WorkerProductionProfile.GetEffectiveDiarizationModel(_appSettings.Worker, effectiveTranscriptionProfile) : string.Empty;
         process.StartInfo.ArgumentList.Add("--model");
-        process.StartInfo.ArgumentList.Add(isAmdTranscriptionProfile ? "ffmpeg-whisper-gpu" : _appSettings.Worker.WhisperXModel);
+        process.StartInfo.ArgumentList.Add(WorkerProductionProfile.GetEffectiveWhisperXModel(_appSettings.Worker, effectiveTranscriptionProfile));
         process.StartInfo.ArgumentList.Add("--batch-size");
         process.StartInfo.ArgumentList.Add(effectiveBatchSize.ToString());
         process.StartInfo.ArgumentList.Add("--compute-type");
@@ -2868,6 +2898,10 @@ public sealed partial class MainForm : Form
             process.StartInfo.ArgumentList.Add(_appSettings.Worker.MaxSpeakers.Value.ToString());
         }
         process.StartInfo.Environment["PYANNOTE_METRICS_ENABLED"] = "0";
+        // Bij een terugval op de processor kiest het hulpprogramma het lichtere CPU-model; het zet zelf een lage
+        // prioriteit en een begrensd aantal draden.
+        process.StartInfo.Environment["CAPTIVOX_WHISPERX_MODEL"] = _appSettings.Worker.WhisperXModel;
+        process.StartInfo.Environment["CAPTIVOX_WHISPERX_CPU_MODEL"] = WorkerProductionProfile.GetEffectiveWhisperXModel(_appSettings.Worker, "cpu-fallback");
         // Het hulpprogramma zoekt zijn runtime in de gegevensmap van deze smaak, nooit in een geerfde map.
         process.StartInfo.Environment[Branding.WorkerDataRootVariable] = AppRuntime.GetAppDataDirectory();
         if (!string.IsNullOrWhiteSpace(_appSettings.Worker.FfmpegPath))
@@ -3099,6 +3133,11 @@ public sealed partial class MainForm : Form
             return "Geen uitvoer ontvangen.";
         }
 
+        if (TranscriptionRuntimeStatus.LooksLikeRuntimeFailure(rawOutput))
+        {
+            return TranscriptionRuntimeStatus.MissingMessage;
+        }
+
         if (rawOutput.Contains("Unexpected token '??'", StringComparison.Ordinal) || rawOutput.Contains("Missing closing ')' in expression", StringComparison.Ordinal))
         {
             return "De worker-self-test liep vast in de PowerShell-parser. Dit wijst meestal op scriptsyntax die niet wordt ondersteund door de actieve PowerShell-versie.";
@@ -3131,8 +3170,8 @@ public sealed partial class MainForm : Form
 
         using var dialog = new SaveFileDialog
         {
-            Title = "Exporteer diagnosepakket",
-            Filter = "ZIP-bestand (*.zip)|*.zip",
+            Title = UiText.T("Exporteer diagnosepakket"),
+            Filter = UiText.T("ZIP-bestand (*.zip)|*.zip"),
             FileName = $"{Branding.DiagnosticsPrefix}_diagnostics_{DateTimeOffset.Now:yyyyMMdd_HHmmss}.zip"
         };
 
@@ -3188,7 +3227,7 @@ public sealed partial class MainForm : Form
         var diagnosticsModeCheckbox = new CheckBox { Text = "Uitgebreide logging / diagnosemodus", Checked = _appSettings.Ui.DiagnosticsMode, AutoSize = true, Margin = new Padding(0, 0, 0, 10), ForeColor = Color.FromArgb(43, 51, 63) };
         var preserveWorkerOutputCheckbox = new CheckBox { Text = "Bewaar worker-uitvoer (stdout/stderr) bij diagnosemodus", Checked = _appSettings.Worker.PreserveWorkerOutput, AutoSize = true, Margin = new Padding(0, 0, 0, 10), ForeColor = Color.FromArgb(43, 51, 63) };
         var workerEnabledCheckbox = new CheckBox { Text = "WhisperX ingeschakeld", Checked = _appSettings.Worker.WhisperXEnabled, AutoSize = true, Margin = new Padding(0, 0, 0, 10), ForeColor = Color.FromArgb(43, 51, 63) };
-        var useProductionProfileCheckbox = new CheckBox { Text = "Gebruik productieprofiel (aanbevolen)", Checked = _appSettings.Worker.UseProductionProfile, AutoSize = true, Margin = new Padding(0, 0, 0, 10), ForeColor = Color.FromArgb(43, 51, 63) };
+        var useProductionProfileCheckbox = new CheckBox { Text = Branding.IsPro ? "Gebruik productieprofiel (aanbevolen)" : "Gebruik de standaardinstellingen (aanbevolen)", Checked = _appSettings.Worker.UseProductionProfile, AutoSize = true, Margin = new Padding(0, 0, 0, 10), ForeColor = Color.FromArgb(43, 51, 63) };
         var transcriptionProfileCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 180 };
         transcriptionProfileCombo.Items.AddRange(new object[] { "Automatisch", "NVIDIA CUDA", "AMD GPU", "CPU fallback" });
         transcriptionProfileCombo.SelectedItem = HardwareAssessmentService.GetTranscriptionProfileDisplayName(_appSettings.Worker.TranscriptionProfile);
@@ -3197,6 +3236,7 @@ public sealed partial class MainForm : Form
         var runtimeHintLabel = new Label { AutoSize = true, MaximumSize = new Size(650, 0), ForeColor = Color.FromArgb(73, 82, 96), Text = GetEffectiveWorkerProfileSummary() };
         var activeTranscriptionProfileLabel = new Label { AutoSize = true, MaximumSize = new Size(650, 0), ForeColor = Color.FromArgb(73, 82, 96), Text = BuildActiveTranscriptionProfileText(_appSettings.Worker.TranscriptionProfile, null) };
         var modelTextBox = new TextBox { Text = _appSettings.Worker.WhisperXModel, Width = 220 };
+        var cpuModelTextBox = new TextBox { Text = _appSettings.Worker.CpuWhisperXModel, Width = 220 };
         var computeTypeCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 160 };
         computeTypeCombo.Items.AddRange(new object[] { "float16", "int8", "float32" });
         computeTypeCombo.SelectedItem = WorkerProductionProfile.GetEffectiveComputeType(_appSettings.Worker);
@@ -3259,7 +3299,7 @@ public sealed partial class MainForm : Form
                     return $"Automatisch actief op basis van laatste detectie: {assessment.TranscriptionProfileDisplayName}. {assessment.TranscriptionProfileReason}";
                 }
 
-                return "Automatisch actief: Captivox kiest bij transcriptie op basis van hardware NVIDIA CUDA, AMD GPU of CPU fallback. Gebruik Hardware opnieuw detecteren om de verwachte keuze hier te tonen.";
+                return "Automatisch actief: met een NVIDIA-kaart via CUDA, anders op de processor (ook met een AMD-kaart; de snelle AMD-route zet je aan onder Instellingen, Opnemen). Gebruik Hardware opnieuw detecteren om de verwachte keuze hier te tonen.";
             }
 
             var hardwareProfile = _appSettings.Hardware;
@@ -3284,8 +3324,10 @@ public sealed partial class MainForm : Form
                 DiarizationEnabled = false,
                 UseProductionProfile = useProductionProfileCheckbox.Checked,
                 TranscriptionProfile = ConvertTranscriptionProfileSelection(transcriptionProfileCombo.SelectedItem?.ToString()),
+                AmdGpuFastRoute = ConvertTranscriptionProfileSelection(transcriptionProfileCombo.SelectedItem?.ToString()) == "amd-gpu",
                 PythonExe = pythonPathTextBox.Text.Trim(),
                 WhisperXModel = modelTextBox.Text.Trim(),
+                CpuWhisperXModel = cpuModelTextBox.Text.Trim(),
                 ComputeType = (computeTypeCombo.SelectedItem?.ToString() ?? _appSettings.Worker.ComputeType).Trim(),
                 Language = languageTextBox.Text.Trim(),
                 BatchSize = (int)batchSizeNumeric.Value,
@@ -3309,11 +3351,13 @@ public sealed partial class MainForm : Form
 
             var manualEditable = !useProductionProfileCheckbox.Checked;
             modelTextBox.Enabled = manualEditable;
+            cpuModelTextBox.Enabled = manualEditable;
             computeTypeCombo.Enabled = manualEditable;
 
             if (!manualEditable)
             {
                 modelTextBox.Text = _appSettings.Worker.WhisperXModel;
+                cpuModelTextBox.Text = _appSettings.Worker.CpuWhisperXModel;
                 computeTypeCombo.SelectedItem = WorkerProductionProfile.DefaultComputeType;
                 if ((int)pollIntervalNumeric.Value != WorkerProductionProfile.DefaultPollIntervalSec)
                 {
@@ -3331,6 +3375,7 @@ public sealed partial class MainForm : Form
         workerEnabledCheckbox.CheckedChanged += (_, _) => RefreshWorkerProfileUi();
         computeTypeCombo.SelectedIndexChanged += (_, _) => RefreshWorkerProfileUi();
         modelTextBox.TextChanged += (_, _) => RefreshWorkerProfileUi();
+        cpuModelTextBox.TextChanged += (_, _) => RefreshWorkerProfileUi();
         RefreshWorkerProfileUi();
 
         var root = new BufferedTableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Padding = new Padding(14), BackColor = AppBackground };
@@ -3389,7 +3434,7 @@ public sealed partial class MainForm : Form
                 var watchFoldersEnabled = snapshot.IsFeatureEnabled(EditionFeatureCatalog.WatchFolders);
                 manageWatchFoldersButton.Text = "Watch folders beheren";
                 manageWatchFoldersButton.Enabled = watchFoldersEnabled;
-                _toolTip.SetToolTip(manageWatchFoldersButton, watchFoldersEnabled ? "Watch folders configureren" : "Watch folders zijn momenteel niet beschikbaar door lokale configuratie of sessiestatus." );
+                SetUiToolTip(manageWatchFoldersButton, watchFoldersEnabled ? "Watch folders configureren" : "Watch folders zijn momenteel niet beschikbaar door lokale configuratie of sessiestatus." );
             }
             if (processingFootnoteLabel is not null)
             {
@@ -3422,7 +3467,7 @@ public sealed partial class MainForm : Form
         languageProfilePanel.Controls.Add(new Label { Text = "Transcriptie", AutoSize = true, Margin = new Padding(16, 7, 8, 0), ForeColor = Color.FromArgb(43, 51, 63) });
         languageProfilePanel.Controls.Add(languageTextBox);
         recorderLayout.Controls.Add(languageProfilePanel, 0, 1);
-        recorderLayout.Controls.Add(new Label { Text = "Dit taalprofiel bepaalt de transcriptietaal. De interface blijft Nederlands.", AutoSize = true, MaximumSize = new Size(720, 0), ForeColor = Color.FromArgb(73, 82, 96), Margin = new Padding(0, 0, 0, 8) }, 0, 2);
+        recorderLayout.Controls.Add(new Label { Text = "Dit taalprofiel bepaalt de transcriptietaal. De taal van Captivox zelf kies je onder Instellingen, Algemeen.", AutoSize = true, MaximumSize = new Size(720, 0), ForeColor = Color.FromArgb(73, 82, 96), Margin = new Padding(0, 0, 0, 8) }, 0, 2);
         recorderLayout.Controls.Add(minimizeToTrayCheckbox, 0, 3);
         recorderLayout.Controls.Add(startWithWindowsCheckbox, 0, 4);
         recorderLayout.Controls.Add(startMinimizedCheckbox, 0, 5);
@@ -3465,14 +3510,16 @@ public sealed partial class MainForm : Form
         AddSettingsRow(workerLayout, ref row, new Label { Text = string.Empty, AutoSize = true }, workerEnabledCheckbox);
         AddSettingsRow(workerLayout, ref row, new Label { Text = string.Empty, AutoSize = true }, useProductionProfileCheckbox);
         AddSettingsRow(workerLayout, ref row, "Transcriptieprofiel", transcriptionProfileCombo);
-        AddSettingsRow(workerLayout, ref row, new Label { Text = string.Empty, AutoSize = true }, new Label { Text = "Automatisch kiest NVIDIA CUDA bij NVIDIA-hardware, AMD GPU bij AMD-hardware en CPU fallback wanneer GPU-runtime faalt of ontbreekt.", AutoSize = true, MaximumSize = new Size(420, 0), ForeColor = Color.FromArgb(73, 82, 96) });
+        AddSettingsRow(workerLayout, ref row, new Label { Text = string.Empty, AutoSize = true }, new Label { Text = "Automatisch kiest NVIDIA CUDA bij NVIDIA-hardware en anders de processor (CPU fallback), ook bij een AMD-kaart: dat is nauwkeuriger. AMD GPU is de snelle, iets minder nauwkeurige route.", AutoSize = true, MaximumSize = new Size(420, 0), ForeColor = Color.FromArgb(73, 82, 96) });
         AddSettingsRow(workerLayout, ref row, "Actief profiel", activeTranscriptionProfileLabel);
         // De hardware-inschatting bepaalt het aanbevolen transcriptieprofiel.
         AddSettingsRow(workerLayout, ref row, "Hardware", hardwareAssessmentPanel);
         AddSettingsRow(workerLayout, ref row, new Label { Text = string.Empty, AutoSize = true }, hardwareAssessmentLabel);
         AddSettingsRow(workerLayout, ref row, "Runtime", runtimeHintLabel);
         AddSettingsRow(workerLayout, ref row, "Python/venv-pad", pythonPathTextBox);
-        AddSettingsRow(workerLayout, ref row, "WhisperX model", modelTextBox);
+        AddSettingsRow(workerLayout, ref row, "WhisperX model (videokaart)", modelTextBox);
+        AddSettingsRow(workerLayout, ref row, "WhisperX model (processor)", cpuModelTextBox);
+        AddSettingsRow(workerLayout, ref row, new Label { Text = string.Empty, AutoSize = true }, new Label { Text = "Zonder bruikbare videokaart transcribeert Captivox op de processor met het processormodel (standaard large-v3-turbo, int8), op lage prioriteit en met een begrensd aantal rekenkernen, zodat de pc bruikbaar blijft.", AutoSize = true, MaximumSize = new Size(420, 0), ForeColor = Color.FromArgb(73, 82, 96) });
         AddSettingsRow(workerLayout, ref row, "Compute type", computeTypeCombo);
         AddSettingsRow(workerLayout, ref row, "Transcriptietaal", languageTextBox);
         AddSettingsRow(workerLayout, ref row, "Batch size", batchSizeNumeric);
@@ -3634,6 +3681,7 @@ public sealed partial class MainForm : Form
             transcriptionProfileCombo.Enabled = workerEnabled;
             pythonPathTextBox.Enabled = workerEnabled;
             modelTextBox.Enabled = workerEnabled;
+            cpuModelTextBox.Enabled = workerEnabled;
             computeTypeCombo.Enabled = workerEnabled;
             languageTextBox.Enabled = workerEnabled;
             batchSizeNumeric.Enabled = workerEnabled;
@@ -3700,9 +3748,12 @@ public sealed partial class MainForm : Form
             _appSettings.Worker.WhisperXEnabled = workerEnabledCheckbox.Checked;
             _appSettings.Worker.UseProductionProfile = useProductionProfileCheckbox.Checked;
             _appSettings.Worker.TranscriptionProfile = ConvertTranscriptionProfileSelection(transcriptionProfileCombo.SelectedItem?.ToString());
+            // AMD GPU hier kiezen is hetzelfde als "Snel via de videokaart (AMD)" onder Instellingen, Opnemen.
+            _appSettings.Worker.AmdGpuFastRoute = _appSettings.Worker.TranscriptionProfile == "amd-gpu";
             _appSettings.Worker.RuntimeMode = "python";
             _appSettings.Worker.PythonExe = pythonPathTextBox.Text.Trim();
             _appSettings.Worker.WhisperXModel = modelTextBox.Text.Trim();
+            _appSettings.Worker.CpuWhisperXModel = string.IsNullOrWhiteSpace(cpuModelTextBox.Text) ? WorkerSettings.DefaultCpuWhisperXModel : cpuModelTextBox.Text.Trim();
             _appSettings.Worker.ComputeType = useProductionProfileCheckbox.Checked ? WorkerProductionProfile.DefaultComputeType : (Convert.ToString(computeTypeCombo.SelectedItem) ?? WorkerProductionProfile.DefaultComputeType);
             _appSettings.Worker.Language = LanguageProfileCatalog.GetTranscriptionLanguageCode(_appSettings.Ui.LanguageProfile);
             _appSettings.Worker.BatchSize = (int)batchSizeNumeric.Value;
@@ -3732,7 +3783,7 @@ public sealed partial class MainForm : Form
             catch (Exception ex)
             {
                 AppRuntime.LogException("Settings save/token persistence failed", ex);
-                MessageBox.Show(dialog, ex.Message, "Instellingen opslaan mislukt", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ShowOwnedMessage(dialog, ex.Message, "Instellingen opslaan mislukt", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return false;
             }
             finally
@@ -3781,7 +3832,7 @@ public sealed partial class MainForm : Form
         dialog.Controls.Add(root);
         dialog.AcceptButton = saveButton;
         dialog.CancelButton = cancelButton;
-        UiLocalizationService.ApplyToControlTree(dialog, _appSettings.Ui.LanguageProfile);
+        UiTextBinder.Attach(dialog);
 
         if (dialog.ShowDialog(this) == DialogResult.OK)
         {
@@ -3838,7 +3889,7 @@ public sealed partial class MainForm : Form
         catch (Exception ex)
         {
             AppRuntime.LogException("Open output folder failed", ex);
-            MessageBox.Show(this, ex.Message, "Uitvoermap openen mislukt", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            ShowOwnedMessage(this, ex.Message, "Uitvoermap openen mislukt", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -4043,7 +4094,7 @@ public sealed partial class MainForm : Form
         await Task.Delay(250).ConfigureAwait(true);
         _ = RunStartupStepAsync("background-poll", PollBackgroundStateAsync);
 
-        if (_mainTabs?.SelectedTab?.Text == "Sessiebibliotheek")
+        if (_mainTabs?.SelectedTab?.Text == UiText.T("Sessiebibliotheek"))
         {
             try
             {
@@ -4090,11 +4141,11 @@ public sealed partial class MainForm : Form
     {
         ShowInTaskbar = false;
         Hide();
-        _trayShowHideItem.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Venster tonen");
+        _trayShowHideItem.Text = UiText.T("Venster tonen");
 
         if (showBalloon && !_trayBalloonShown)
         {
-            _notifyIcon.ShowBalloonTip(2500, Branding.DisplayName, "Applicatie draait in de systeemtray.", ToolTipIcon.Info);
+            _notifyIcon.ShowBalloonTip(2500, Branding.DisplayName, UiText.T("Applicatie draait in de systeemtray."), ToolTipIcon.Info);
             _trayBalloonShown = true;
         }
     }
@@ -4106,7 +4157,7 @@ public sealed partial class MainForm : Form
         ShowInTaskbar = true;
         Activate();
         BringToFront();
-        _trayShowHideItem.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Venster verbergen");
+        _trayShowHideItem.Text = UiText.T("Venster verbergen");
     }
 
     // Toonverzoeken van een tweede start (SingleInstanceGuard). Een verzoek dat binnenkomt voordat Shown
@@ -4251,7 +4302,7 @@ public sealed partial class MainForm : Form
     {
         if (_stopFinalizeInProgress && e.CloseReason == CloseReason.UserClosing)
         {
-            var result = MessageBox.Show(
+            var result = ShowOwnedMessage(
                 this,
                 "Captivox Recorder rondt de opname nog af. Wil je afsluiten zodra afronden en mixen gereed zijn?",
                 "Opname wordt afgerond",
@@ -4269,7 +4320,7 @@ public sealed partial class MainForm : Form
 
         if (_session is not null && !_closingAfterStop && e.CloseReason == CloseReason.UserClosing)
         {
-            var result = MessageBox.Show(
+            var result = ShowOwnedMessage(
                 this,
                 "Er loopt nog een opname. Weet je zeker dat Captivox Recorder moet afsluiten? De actieve opname wordt dan eerst gestopt.",
                 "Opname nog actief",
@@ -4350,7 +4401,7 @@ public sealed partial class MainForm : Form
 
         if (_session is null || !_recordingStopwatch.IsRunning)
         {
-            if (_silenceStateLabel.Text == "Wacht op transcriptie")
+            if (_silenceStateLabel.Text == UiText.T("Wacht op transcriptie"))
             {
                 return;
             }
@@ -4564,9 +4615,11 @@ public sealed partial class MainForm : Form
             }
             else if (status is "failed" or "error")
             {
-                var message = !string.IsNullOrWhiteSpace(manifest.TranscriptionError)
-                    ? $"Transcriptie mislukt voor {manifest.MeetingId}: {manifest.TranscriptionError}"
-                    : $"Transcriptie mislukt voor {manifest.MeetingId}.";
+                var message = TranscriptionRuntimeStatus.LooksLikeRuntimeFailure(manifest.TranscriptionError) || TranscriptionRuntimeStatus.IsRuntimeMissing(_appSettings.Worker)
+                    ? $"Transcriptie mislukt voor {manifest.MeetingId}. {TranscriptionRuntimeStatus.MissingMessage}"
+                    : !string.IsNullOrWhiteSpace(manifest.TranscriptionError)
+                        ? $"Transcriptie mislukt voor {manifest.MeetingId}: {manifest.TranscriptionError}"
+                        : $"Transcriptie mislukt voor {manifest.MeetingId}.";
                 await _notificationDispatcher.NotifyAsync(NotificationEventType.TranscriptionFailed, "Transcriptie mislukt", message, ToolTipIcon.Error);
             }
         }
@@ -4670,7 +4723,7 @@ public sealed partial class MainForm : Form
         var parts = new List<string>();
         if (!string.IsNullOrWhiteSpace(runtime.Message))
         {
-            parts.Add(runtime.Message!);
+            parts.Add(TranscriptionRuntimeStatus.LooksLikeRuntimeFailure(runtime.Message) ? TranscriptionRuntimeStatus.MissingMessage : runtime.Message!);
         }
 
         if (!string.IsNullOrWhiteSpace(runtime.ActiveSessionDir))
@@ -4748,14 +4801,14 @@ public sealed partial class MainForm : Form
     {
         _statusSource = source;
         _statusMeetingId = string.IsNullOrWhiteSpace(meetingId) ? null : meetingId.Trim();
-        _statusLabel.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, summary);
+        _statusLabel.Text = UiText.T(summary);
         _statusLabel.ForeColor = isError ? StopColor : Color.FromArgb(31, 41, 55);
-        _detailsTextBox.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, details);
-        _statusStripLabel.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, summary);
+        _detailsTextBox.Text = UiText.T(details);
+        _statusStripLabel.Text = UiText.T(summary);
         _statusStripLabel.ForeColor = isError ? StopColor : Color.FromArgb(31, 41, 55);
-        _sessionLabel.Text = _manifest?.MeetingId ?? UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Nog geen opname gestart.");
+        _sessionLabel.Text = _manifest?.MeetingId ?? UiText.T("Nog geen opname gestart.");
         UpdateRecorderOverviewState();
-        _trayShowHideItem.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, Visible ? "Venster verbergen" : "Venster tonen");
+        _trayShowHideItem.Text = UiText.T(Visible ? "Venster verbergen" : "Venster tonen");
     }
 
     private void ClearStaleAiErrorStatus(string workerSession, string workerPhase, bool isProcessing)
@@ -4781,18 +4834,18 @@ public sealed partial class MainForm : Form
     {
         _overviewLastSessionValueLabel.Text = _manifest?.MeetingId ?? ResolveLatestLibrarySessionName();
         _overviewLibraryCountValueLabel.Text = _libraryListView.Items.Count.ToString();
-        _overviewWorkerStatusValueLabel.Text = string.IsNullOrWhiteSpace(_workerStatusLabel.Text) ? UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Onbekend") : _workerStatusLabel.Text;
+        _overviewWorkerStatusValueLabel.Text = string.IsNullOrWhiteSpace(_workerStatusLabel.Text) ? UiText.T("Onbekend") : _workerStatusLabel.Text;
         _overviewLastProcessingValueLabel.Text = ResolveRecorderOverviewLastProcessing();
-        _overviewAutomationValueLabel.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Uitgeschakeld");
+        _overviewAutomationValueLabel.Text = UiText.T("Uitgeschakeld");
         _overviewLastOrganizationValueLabel.Text = ResolveLatestLibraryOrganization();
         _overviewLastProjectValueLabel.Text = ResolveLatestLibraryProject();
 
-        _recorderReadinessStatusValueLabel.Text = string.IsNullOrWhiteSpace(_statusLabel.Text) ? UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Gereed.") : _statusLabel.Text;
-        _recorderReadinessSessionValueLabel.Text = string.IsNullOrWhiteSpace(_sessionLabel.Text) ? UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Nog geen opname gestart.") : _sessionLabel.Text;
-        _recorderReadinessMicValueLabel.Text = string.IsNullOrWhiteSpace(_selectedMicLabel.Text) ? UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Niet geselecteerd") : _selectedMicLabel.Text;
-        _recorderReadinessSystemValueLabel.Text = string.IsNullOrWhiteSpace(_selectedSystemLabel.Text) ? UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Niet geselecteerd") : _selectedSystemLabel.Text;
-        _recorderReadinessProfileValueLabel.Text = string.IsNullOrWhiteSpace(_profileLabel.Text) ? UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Onbekend") : _profileLabel.Text;
-        _recorderReadinessWorkerValueLabel.Text = string.IsNullOrWhiteSpace(_workerStatusLabel.Text) ? UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Onbekend") : _workerStatusLabel.Text;
+        _recorderReadinessStatusValueLabel.Text = string.IsNullOrWhiteSpace(_statusLabel.Text) ? UiText.T("Gereed.") : _statusLabel.Text;
+        _recorderReadinessSessionValueLabel.Text = string.IsNullOrWhiteSpace(_sessionLabel.Text) ? UiText.T("Nog geen opname gestart.") : _sessionLabel.Text;
+        _recorderReadinessMicValueLabel.Text = string.IsNullOrWhiteSpace(_selectedMicLabel.Text) ? UiText.T("Niet geselecteerd") : _selectedMicLabel.Text;
+        _recorderReadinessSystemValueLabel.Text = string.IsNullOrWhiteSpace(_selectedSystemLabel.Text) ? UiText.T("Niet geselecteerd") : _selectedSystemLabel.Text;
+        _recorderReadinessProfileValueLabel.Text = string.IsNullOrWhiteSpace(_profileLabel.Text) ? UiText.T("Onbekend") : _profileLabel.Text;
+        _recorderReadinessWorkerValueLabel.Text = string.IsNullOrWhiteSpace(_workerStatusLabel.Text) ? UiText.T("Onbekend") : _workerStatusLabel.Text;
         _recorderReadinessStatusValueLabel.ForeColor = _statusLabel.ForeColor;
     }
 
@@ -4800,12 +4853,12 @@ public sealed partial class MainForm : Form
     {
         if (_libraryListView.Items.Count == 0)
         {
-            return UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Nog geen sessie");
+            return UiText.T("Nog geen sessie");
         }
 
         return _libraryListView.Items[0].SubItems.Count > 1
             ? _libraryListView.Items[0].SubItems[1].Text
-            : UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Nog geen sessie");
+            : UiText.T("Nog geen sessie");
     }
 
     private string ResolveLatestLibraryOrganization()
@@ -4833,34 +4886,39 @@ public sealed partial class MainForm : Form
     private string ResolveRecorderOverviewLastProcessing()
     {
         if (!string.IsNullOrWhiteSpace(_workerPhaseLabel.Text)
-            && !string.Equals(_workerPhaseLabel.Text, "Nog niet gescand", StringComparison.OrdinalIgnoreCase))
+            && !string.Equals(_workerPhaseLabel.Text, UiText.T("Nog niet gescand"), StringComparison.OrdinalIgnoreCase))
         {
             return _workerPhaseLabel.Text;
         }
 
         if (!string.IsNullOrWhiteSpace(_workerActivityLabel.Text)
-            && !string.Equals(_workerActivityLabel.Text, "Nog niet gescand", StringComparison.OrdinalIgnoreCase))
+            && !string.Equals(_workerActivityLabel.Text, UiText.T("Nog niet gescand"), StringComparison.OrdinalIgnoreCase))
         {
             return _workerActivityLabel.Text;
         }
 
-        return UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Nog geen verwerking");
+        return UiText.T("Nog geen verwerking");
     }
 
     private void RestoreSelection(ComboBox comboBox, string? id)
     {
-        if (string.IsNullOrWhiteSpace(id))
+        if (!string.IsNullOrWhiteSpace(id))
         {
-            if (comboBox.Items.Count > 0)
+            for (var i = 0; i < comboBox.Items.Count; i++)
             {
-                comboBox.SelectedIndex = 0;
+                if (comboBox.Items[i] is DeviceInfo info && string.Equals(info.Id, id, StringComparison.OrdinalIgnoreCase))
+                {
+                    comboBox.SelectedIndex = i;
+                    return;
+                }
             }
-            return;
         }
 
+        // Geen (bestaande) voorkeur: het standaardapparaat van Windows, niet het eerste in de lijst (dat was bijvoorbeeld
+        // het geluid van een beeldscherm via HDMI). Alleen als Windows geen standaard kent: het eerste.
         for (var i = 0; i < comboBox.Items.Count; i++)
         {
-            if (comboBox.Items[i] is DeviceInfo info && string.Equals(info.Id, id, StringComparison.OrdinalIgnoreCase))
+            if (comboBox.Items[i] is DeviceInfo { IsDefault: true })
             {
                 comboBox.SelectedIndex = i;
                 return;
@@ -5022,65 +5080,19 @@ public sealed partial class MainForm : Form
             BackColor = CardBackground
         };
 
-    private void MarkDynamicUiValuesForLocalizationSkip()
-    {
-        foreach (var control in new Control[]
-                 {
-                     _statusLabel,
-                     _sessionLabel,
-                     _elapsedLabel,
-                     _headerElapsedLabel,
-                     _selectedMicLabel,
-                     _selectedSystemLabel,
-                     _profileLabel,
-                     _workerStatusLabel,
-                     _queueStatusLabel,
-                     _workerActivityLabel,
-                     _workerPhaseLabel,
-                     _workerSessionLabel,
-                     _retentionStatusLabel,
-                     _recoveryStatusLabel,
-                     _recordingHealthLabel,
-                     _micHealthLabel,
-                     _systemHealthLabel,
-                     _silenceStateLabel,
-                     _detailsTextBox,
-                     _overviewLastSessionValueLabel,
-                     _overviewLibraryCountValueLabel,
-                     _overviewWorkerStatusValueLabel,
-                     _overviewLastProcessingValueLabel,
-                     _overviewAutomationValueLabel,
-                     _overviewLastOrganizationValueLabel,
-                     _overviewLastProjectValueLabel,
-                     _recorderReadinessStatusValueLabel,
-                     _recorderReadinessSessionValueLabel,
-                     _recorderReadinessMicValueLabel,
-                     _recorderReadinessSystemValueLabel,
-                     _recorderReadinessProfileValueLabel,
-                     _recorderReadinessWorkerValueLabel,
-                     _micLevelValueLabel,
-                     _systemLevelValueLabel
-                 })
-        {
-            control.AccessibleDescription = "skip-ui-localization";
-        }
-
-        _statusStripLabel.AccessibleDescription = "skip-ui-localization";
-        _elapsedStatusLabel.AccessibleDescription = "skip-ui-localization";
-        _versionStatusLabel.AccessibleDescription = "skip-ui-localization";
-        _editionStatusStripLabel.AccessibleDescription = "skip-ui-localization";
-    }
-
+    // De teksten in de taal van de interface: het hele venster en het menu van het systeemvak, ook wat later verandert of
+    // wordt toegevoegd (UiTextBinder).
     private void ApplyCurrentLanguageToUi()
     {
-        UiLocalizationService.ApplyToControlTree(this, _appSettings.Ui.LanguageProfile);
+        UiTextBinder.Attach(this);
+        UiTextBinder.Attach(_trayMenu);
         RefreshLibraryUiLanguageState();
-        _toolTip.SetToolTip(_settingsButton, UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Instellingen en admin"));
-        _trayShowHideItem.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, Visible ? "Venster verbergen" : "Venster tonen");
+        SetUiToolTip(_settingsButton, "Instellingen en admin");
+        _trayShowHideItem.Text = UiText.T(Visible ? "Venster verbergen" : "Venster tonen");
         var isRunning = _session is not null;
-        _trayToggleRecordItem.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, isRunning ? "Opname stoppen" : "Opname starten");
-        _trayOpenFolderItem.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Opnamemap openen");
-        _trayExitItem.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Afsluiten");
+        _trayToggleRecordItem.Text = UiText.T(isRunning ? "Opname stoppen" : "Opname starten");
+        _trayOpenFolderItem.Text = UiText.T("Opnamemap openen");
+        _trayExitItem.Text = UiText.T("Afsluiten");
     }
 
     private void ConfigureCompactShellLabels()
@@ -5122,7 +5134,7 @@ public sealed partial class MainForm : Form
 
         void SyncTooltip(object? _, EventArgs __)
         {
-            _toolTip.SetToolTip(label, string.IsNullOrWhiteSpace(label.Text) ? string.Empty : label.Text);
+            SetUiToolTip(label, string.IsNullOrWhiteSpace(label.Text) ? string.Empty : label.Text);
         }
 
         label.TextChanged += SyncTooltip;

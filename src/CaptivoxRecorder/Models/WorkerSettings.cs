@@ -7,11 +7,20 @@ public sealed class WorkerSettings
     public bool DiarizationEnabled { get; set; } = false;
     public bool UseProductionProfile { get; set; } = true;
     public string TranscriptionProfile { get; set; } = "auto";
+    // De snelle route via een AMD-videokaart (FFmpeg Whisper met Vulkan). Standaard uit: die route maakt meer fouten en
+    // verzint tekst in stiltes; automatisch schrijft Captivox op een pc met een AMD-kaart daarom op de processor uit.
+    // Aan betekent transcriptieprofiel amd-gpu (zie WorkerProductionProfile.Normalize).
+    public bool AmdGpuFastRoute { get; set; }
     public string WhisperCppExe { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), Branding.AppDataFolder, "runtime", "whispercpp", "whisper-cli.exe");
     public string WhisperCppModelPath { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), Branding.AppDataFolder, "runtime", "whispercpp", "models", "ggml-large-v3-turbo-q5_0.bin");
     public string RuntimeMode { get; set; } = "python";
     public string PythonExe { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), Branding.AppDataFolder, "runtime", ".venv", "Scripts", "python.exe");
+    // Het model voor de videokaart (NVIDIA).
     public string WhisperXModel { get; set; } = "large-v2";
+    // Het model zodra de transcriptie op de processor draait (ook bij een terugval van de videokaartroute): lichter en
+    // sneller, met int8, zodat de pc bruikbaar blijft.
+    public string CpuWhisperXModel { get; set; } = DefaultCpuWhisperXModel;
+    public const string DefaultCpuWhisperXModel = "large-v3-turbo";
     public string ComputeType { get; set; } = "float16";
     public string Language { get; set; } = "nl";
     public int BatchSize { get; set; } = 4;

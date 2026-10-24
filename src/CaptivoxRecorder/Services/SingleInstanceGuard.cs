@@ -5,9 +5,22 @@ namespace LocalCaptureAgent.Services;
 // Twee recorders stellen allebei de opnamevraag, draaien allebei een worker en kunnen een melding dubbel tonen.
 internal sealed class SingleInstanceGuard : IDisposable
 {
-    internal const string DefaultMutexName = @"Local\" + Branding.InstanceName + ".SingleInstance";
-    internal const string DefaultShowName = @"Local\" + Branding.InstanceName + ".ShowWindow";
-    internal const string DefaultAckName = @"Local\" + Branding.InstanceName + ".ShowWindowAck";
+    // Met een eigen gegevensmap (de testvariabele uit Branding) ook een eigen vergrendeling: een testexemplaar mag nooit
+    // het venster van de echte Captivox naar voren halen of door die Captivox worden tegengehouden. Zonder testvariabele
+    // blijven de namen ongewijzigd (het installatieprogramma kijkt naar dezelfde naam, zie AppMutex in de .iss).
+    internal static readonly string InstancePrefix = @"Local\" + Branding.InstanceName + DataRootSuffix();
+    internal static readonly string DefaultMutexName = InstancePrefix + ".SingleInstance";
+    internal static readonly string DefaultShowName = InstancePrefix + ".ShowWindow";
+    internal static readonly string DefaultAckName = InstancePrefix + ".ShowWindowAck";
+
+    private static string DataRootSuffix()
+    {
+        var overridePath = Environment.GetEnvironmentVariable(Branding.AppDataOverrideVariable);
+        if (string.IsNullOrWhiteSpace(overridePath)) return string.Empty;
+        var normalized = Path.GetFullPath(overridePath.Trim()).TrimEnd('\\', '/').ToUpperInvariant();
+        var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(normalized));
+        return "." + Convert.ToHexString(hash, 0, 6);
+    }
 
     // Hoe lang een tweede start op de bevestiging wacht. Het draaiende exemplaar bevestigt alleen binnen een kortere
     // termijn: een te late bevestiging zou in de semafoor blijven staan en een volgende start ten onrechte geruststellen.
@@ -38,8 +51,11 @@ internal sealed class SingleInstanceGuard : IDisposable
 
     // Geeft de guard terug als dit het eerste exemplaar is; anders null. Het eerste exemplaar houdt de mutex
     // vast tot het proces stopt; Windows geeft hem ook vrij als het proces crasht.
-    internal static SingleInstanceGuard? TryAcquire(string mutexName = DefaultMutexName, string showName = DefaultShowName, string ackName = DefaultAckName)
+    internal static SingleInstanceGuard? TryAcquire(string? mutexName = null, string? showName = null, string? ackName = null)
     {
+        mutexName ??= DefaultMutexName;
+        showName ??= DefaultShowName;
+        ackName ??= DefaultAckName;
         Mutex mutex;
         try
         {
@@ -87,8 +103,10 @@ internal sealed class SingleInstanceGuard : IDisposable
 
     // Vraagt het draaiende exemplaar zijn venster te tonen en wacht op de bevestiging, die dat exemplaar pas
     // geeft nadat zijn UI-thread het venster heeft getoond. Zo blijkt ook of het exemplaar nog reageert.
-    internal static ShowRequestResult RequestShowFromExistingInstance(TimeSpan timeout, string showName = DefaultShowName, string ackName = DefaultAckName)
+    internal static ShowRequestResult RequestShowFromExistingInstance(TimeSpan timeout, string? showName = null, string? ackName = null)
     {
+        showName ??= DefaultShowName;
+        ackName ??= DefaultAckName;
         try
         {
             if (!Semaphore.TryOpenExisting(showName, out var showRequests)) return ShowRequestResult.NotRunning;

@@ -280,10 +280,10 @@ internal static class AppRuntime
 
             if (!string.IsNullOrWhiteSpace(sessionLogPath))
             {
-                File.AppendAllText(sessionLogPath, $"[{now:yyyy-MM-dd HH:mm:ss}] Sessie als interrupted gemarkeerd: {manifest.ErrorMessage}{Environment.NewLine}", Encoding.UTF8);
+                File.AppendAllText(sessionLogPath, $"[{now:yyyy-MM-dd HH:mm:ss}] Sessie als interrupted gemarkeerd: {manifest.ErrorMessage}{Environment.NewLine}", Encoding.UTF8); // geen vertaling
             }
 
-            SafeWrite($"[{now:yyyy-MM-dd HH:mm:ss.fff}] Actieve opnamesessie als interrupted gemarkeerd: {manifestPath} :: {manifest.ErrorMessage}{Environment.NewLine}");
+            SafeWrite($"[{now:yyyy-MM-dd HH:mm:ss.fff}] Actieve opnamesessie als interrupted gemarkeerd: {manifestPath} :: {manifest.ErrorMessage}{Environment.NewLine}"); // geen vertaling
         }
         catch (Exception ex)
         {

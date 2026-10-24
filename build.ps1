@@ -52,7 +52,7 @@ Set-Content -LiteralPath (Join-Path $workersTarget 'worker.version.txt') -Value 
 
 $toolsTarget = Join-Path $stage 'tools'
 New-Item -ItemType Directory -Force -Path $toolsTarget | Out-Null
-$tools = @('Build-WhisperCppVulkanRuntime.ps1', 'Test-WhisperCppVulkanRuntime.ps1')
+$tools = @('Build-WhisperCppVulkanRuntime.ps1', 'Test-WhisperCppVulkanRuntime.ps1', 'Close-Captivox.ps1')
 foreach ($file in $tools) { Copy-Item -LiteralPath (Join-Path $repoRoot "tools\$file") -Destination $toolsTarget }
 
 # install-prereqs.ps1 krijgt de gegevensmap van deze smaak ingevuld: precies een regel '$script:ProductFolder = '...''.

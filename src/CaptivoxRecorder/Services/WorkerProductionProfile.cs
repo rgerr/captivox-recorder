@@ -16,7 +16,18 @@ internal static class WorkerProductionProfile
     public static void Normalize(WorkerSettings settings)
     {
         settings.TranscriptionProfile = HardwareAssessmentService.NormalizeTranscriptionProfile(settings.TranscriptionProfile);
+        // De AMD-route alleen als de gebruiker die zelf koos. Eerdere versies zetten bij een AMD-kaart zelf amd-gpu; dat
+        // wordt de nauwkeurige processorroute.
+        if (settings.AmdGpuFastRoute)
+        {
+            settings.TranscriptionProfile = "amd-gpu";
+        }
+        else if (settings.TranscriptionProfile == "amd-gpu")
+        {
+            settings.TranscriptionProfile = "cpu-fallback";
+        }
         settings.ComputeType = string.IsNullOrWhiteSpace(settings.ComputeType) ? DefaultComputeType : settings.ComputeType.Trim().ToLowerInvariant();
+        settings.CpuWhisperXModel = string.IsNullOrWhiteSpace(settings.CpuWhisperXModel) ? WorkerSettings.DefaultCpuWhisperXModel : settings.CpuWhisperXModel.Trim();
         settings.WhisperCppExe = string.IsNullOrWhiteSpace(settings.WhisperCppExe) ? settings.WhisperCppExe : settings.WhisperCppExe.Trim();
         settings.WhisperCppModelPath = string.IsNullOrWhiteSpace(settings.WhisperCppModelPath) ? settings.WhisperCppModelPath : settings.WhisperCppModelPath.Trim();
         settings.DiarizationMode = string.IsNullOrWhiteSpace(settings.DiarizationMode) ? DefaultDiarizationMode : settings.DiarizationMode.Trim().ToLowerInvariant();
@@ -47,6 +58,18 @@ internal static class WorkerProductionProfile
         if (profile == "amd-gpu") { return "ffmpeg-whisper"; }
         if (profile == "cpu-fallback") { return "int8"; }
         return settings.UseProductionProfile ? DefaultComputeType : settings.ComputeType;
+    }
+
+    // Het WhisperX-model voor een transcriptieprofiel; zelfde keuze als Get-EffectiveWhisperXModel in de worker.
+    public static string GetEffectiveWhisperXModel(WorkerSettings settings, string effectiveTranscriptionProfile)
+    {
+        var profile = HardwareAssessmentService.NormalizeTranscriptionProfile(effectiveTranscriptionProfile);
+        if (profile == "amd-gpu") { return "ffmpeg-whisper-gpu"; }
+        if (profile == "cpu-fallback")
+        {
+            return string.IsNullOrWhiteSpace(settings.CpuWhisperXModel) ? WorkerSettings.DefaultCpuWhisperXModel : settings.CpuWhisperXModel.Trim();
+        }
+        return settings.WhisperXModel;
     }
 
     public static string NormalizeDiarizationAcceleration(string? value)
@@ -119,22 +142,14 @@ internal static class WorkerProductionProfile
     public static string BuildSummary(WorkerSettings settings)
     {
         Normalize(settings);
-        var normalizedProfile = HardwareAssessmentService.NormalizeTranscriptionProfile(settings.TranscriptionProfile);
-        if (normalizedProfile == "amd-gpu")
+        // De gratis versie: alleen de route en het model, in gewone taal (geen sprekerherkenning, geen profieltermen).
+        var cpuModel = GetEffectiveWhisperXModel(settings, "cpu-fallback");
+        return HardwareAssessmentService.NormalizeTranscriptionProfile(settings.TranscriptionProfile) switch
         {
-            return "Productieprofiel actief: transcriptieprofiel AMD GPU · engine FFmpeg Whisper GPU met Vulkan-validatie · compute ffmpeg-whisper · diarization via pyannote 3.1 met GPU-sidecar auto en CPU-fallback · poll " + DefaultPollIntervalSec + "s · READY-age " + DefaultMinReadyAgeSec + "s. Afwijkende geavanceerde waarden worden bij opslaan teruggezet naar het productieprofiel; hardwareprofiel blijft apart selecteerbaar.";
-        }
-        if (settings.UseProductionProfile)
-        {
-            return $"Productieprofiel actief: transcriptieprofiel {HardwareAssessmentService.GetTranscriptionProfileDisplayName(settings.TranscriptionProfile)} · NVIDIA gebruikt WhisperX/CUDA met {DefaultComputeType}; AMD gebruikt FFmpeg Whisper GPU via Vulkan-validatie met compute ffmpeg-whisper · standaarddiarization via pyannote 3.1 met GPU-sidecar auto en CPU-fallback · poll {DefaultPollIntervalSec}s · READY-age {DefaultMinReadyAgeSec}s. Afwijkende geavanceerde waarden worden bij opslaan teruggezet naar het productieprofiel; hardwareprofiel blijft apart selecteerbaar.";
-        }
-
-        var deviations = GetDeviationMessages(settings);
-        if (deviations.Count == 0)
-        {
-            return $"Productieprofiel uitgeschakeld, maar de huidige waarden komen nog overeen met de standaardroute ({HardwareAssessmentService.GetTranscriptionProfileDisplayName(settings.TranscriptionProfile)} · {DefaultComputeType} + pyannote/speaker-diarization-3.1, diarization-acceleration auto).";
-        }
-
-        return $"Bewuste override van productieprofiel actief: profiel={HardwareAssessmentService.GetTranscriptionProfileDisplayName(settings.TranscriptionProfile)}, {string.Join(", ", deviations)}.";
+            "amd-gpu" => $"Snel via de AMD-videokaart (FFmpeg Whisper met Vulkan), iets minder nauwkeurig. Lukt dat niet, dan op de processor met {cpuModel}.",
+            "nvidia-cuda" => $"Via de NVIDIA-videokaart (CUDA) met {settings.WhisperXModel}. Werkt CUDA niet, dan op de processor met {cpuModel}.",
+            "cpu-fallback" => $"Op de processor met {cpuModel} (int8), op lage prioriteit en met een begrensd aantal rekenkernen.",
+            _ => $"Automatisch: met een NVIDIA-videokaart via CUDA ({settings.WhisperXModel}), anders op de processor met {cpuModel} (int8, lage prioriteit).",
+        };
     }
 }

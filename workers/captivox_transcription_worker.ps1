@@ -50,6 +50,18 @@ $AppDataRoot = [System.IO.Path]::GetFullPath($AppDataRoot).TrimEnd('\')
 # De Python-hulpprogramma's vinden hun runtime via deze variabele. Altijd uit de parameter zetten, zodat een geerfde
 # waarde nooit meetelt.
 $env:CAPTIVOX_WORKER_DATA_ROOT = $AppDataRoot
+
+# Transcriptie mag de pc niet traag maken: de worker zelf en alles wat hij start (Python, FFmpeg) draait op "lager dan
+# normaal". Kindprocessen erven die prioriteit; Invoke-ExternalProcess zet hem daarnaast nog expliciet.
+try { (Get-Process -Id $PID).PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal } catch {}
+# Begrensd aantal rekendraden voor de processorroute: logische processors min twee, hooguit acht. Zo blijft er altijd
+# processortijd over voor de gebruiker. Een vooraf gezette CAPTIVOX_CPU_THREADS gaat voor.
+function Get-CpuThreadLimit {
+    $configured = 0
+    if ([int]::TryParse([string]$env:CAPTIVOX_CPU_THREADS, [ref]$configured) -and $configured -ge 1) { return $configured }
+    return [Math]::Max(1, [Math]::Min([Environment]::ProcessorCount - 2, 8))
+}
+$CpuThreadLimit = Get-CpuThreadLimit
 $SettingsPath = if ($SettingsPath) { $SettingsPath } else { Join-Path $AppDataRoot 'settings\application_settings.json' }
 $HelperScript = Join-Path $WorkerRoot 'transcribe_with_whisperx_recorder.py'
 $WorkerLogRoot = Join-Path $AppDataRoot 'logs\worker'
@@ -192,6 +204,7 @@ function Load-Settings {
                 runtimeMode = 'python'
                 pythonExe = (Resolve-BundledWorkerPythonPath)
                 whisperXModel = 'large-v2'
+                cpuWhisperXModel = 'large-v3-turbo'
                 computeType = 'float16'
                 language = 'nl'
                 batchSize = 4
@@ -343,6 +356,12 @@ function Load-WorkerConfig {
     if (Test-TranscriptFormatIncludes -Format $transcriptOutputFormat -Token 'vtt') { $exportVtt = $true }
     $watchFolderEnabled = Get-BooleanSettingValue -Object $settings.worker.import -PropertyNames @('watchFolderEnabled','WatchFolderEnabled') -DefaultValue $false
     $consumeWatchFiles = Get-BooleanSettingValue -Object $settings.worker.import -PropertyNames @('consumeWatchFiles','ConsumeWatchFiles') -DefaultValue $true
+    # De snelle AMD-route (amd-gpu) alleen als de gebruiker die koos (worker.amdGpuFastRoute); anders de processor. Zelfde
+    # regel als WorkerProductionProfile.Normalize in de recorder.
+    $transcriptionProfile = if ($settings.worker.transcriptionProfile) { Normalize-TranscriptionProfile -Profile ([string]$settings.worker.transcriptionProfile) } else { 'auto' }
+    $amdGpuFastRoute = Get-BooleanSettingValue -Object $settings.worker -PropertyNames @('amdGpuFastRoute','AmdGpuFastRoute') -DefaultValue $false
+    if ($amdGpuFastRoute) { $transcriptionProfile = 'amd-gpu' }
+    elseif ($transcriptionProfile -eq 'amd-gpu') { $transcriptionProfile = 'cpu-fallback' }
 
     return [pscustomobject]@{
         Settings = $settings
@@ -351,13 +370,15 @@ function Load-WorkerConfig {
         WhisperXEnabled = [bool]$settings.worker.whisperXEnabled
         DiarizationEnabled = $false
         UseProductionProfile = if ($null -ne $settings.worker.useProductionProfile) { [bool]$settings.worker.useProductionProfile } else { $true }
-        TranscriptionProfile = if ($settings.worker.transcriptionProfile) { Normalize-TranscriptionProfile -Profile ([string]$settings.worker.transcriptionProfile) } else { 'auto' }
+        TranscriptionProfile = $transcriptionProfile
         WhisperCppExe = if ($settings.worker.whisperCppExe) { [string]$settings.worker.whisperCppExe } else { Resolve-BundledWhisperCppExePath }
         WhisperCppModelPath = if ($settings.worker.whisperCppModelPath) { [string]$settings.worker.whisperCppModelPath } else { Resolve-BundledWhisperCppModelPath }
         RuntimeMode = 'python'
         PythonExe = if ($settings.worker.pythonExe) { [string]$settings.worker.pythonExe } else { Resolve-BundledWorkerPythonPath }
         Language = if ($settings.worker.language) { [string]$settings.worker.language } else { 'nl' }
         Model = if ($settings.worker.whisperXModel) { [string]$settings.worker.whisperXModel } else { 'large-v2' }
+        # Het lichtere model voor de processorroute (int8); het model hierboven is voor de videokaart.
+        CpuModel = if ($settings.worker.cpuWhisperXModel) { [string]$settings.worker.cpuWhisperXModel } else { 'large-v3-turbo' }
         BatchSize = if ($settings.worker.batchSize) { [int]$settings.worker.batchSize } else { 4 }
         ComputeType = if ($settings.worker.computeType) { [string]$settings.worker.computeType } else { 'float16' }
         MinSpeakers = if ($null -ne $settings.worker.minSpeakers) { [int]$settings.worker.minSpeakers } else { 0 }
@@ -613,7 +634,12 @@ function Resolve-EffectiveTranscriptionProfile {
     param([pscustomobject]$Config = $script:CurrentConfig)
     $configured = Normalize-TranscriptionProfile -Profile $Config.TranscriptionProfile
     if ($configured -eq 'auto') {
-        return (Get-DetectedGpuProfile)
+        # Automatisch: NVIDIA via CUDA (nauwkeurig). Een AMD-kaart gaat standaard via de processor: de snelle route
+        # (FFmpeg Whisper met Vulkan) maakt meer fouten en verzint tekst in stiltes. Die route alleen met het profiel
+        # amd-gpu, dat de gebruiker onder Instellingen aanzet ("Snel via de videokaart (AMD)").
+        $detected = Get-DetectedGpuProfile
+        if ($detected -eq 'amd-gpu') { return 'cpu-fallback' }
+        return $detected
     }
     return $configured
 }
@@ -719,6 +745,29 @@ function Get-EffectiveBatchSize {
     if ($resolvedProfile -eq 'cpu-fallback') { return [Math]::Min([int]$Config.BatchSize, 2) }
     if ($resolvedProfile -eq 'amd-gpu') { return 1 }
     return [int]$Config.BatchSize
+}
+
+# Het WhisperX-model voor een route: de processor krijgt het lichtere CPU-model, de videokaart het gewone model.
+function Get-EffectiveWhisperXModel {
+    param([pscustomobject]$Config = $script:CurrentConfig, [string]$Profile = '')
+    $resolvedProfile = if ([string]::IsNullOrWhiteSpace($Profile)) { Resolve-EffectiveTranscriptionProfile -Config $Config } else { Normalize-TranscriptionProfile -Profile $Profile }
+    if ($resolvedProfile -eq 'amd-gpu') { return 'ffmpeg-whisper-gpu' }
+    if ($resolvedProfile -eq 'cpu-fallback') { return [string]$Config.CpuModel }
+    return [string]$Config.Model
+}
+
+# Omgevingsvariabelen voor het Python-hulpprogramma: welk model bij een terugval op de processor en hoeveel draden.
+function Get-HelperResourceEnvironment {
+    $threads = [string]$CpuThreadLimit
+    return @{
+        CAPTIVOX_WHISPERX_MODEL = [string]$script:CurrentConfig.Model
+        CAPTIVOX_WHISPERX_CPU_MODEL = [string]$script:CurrentConfig.CpuModel
+        CAPTIVOX_CPU_THREADS = $threads
+        OMP_NUM_THREADS = $threads
+        MKL_NUM_THREADS = $threads
+        OPENBLAS_NUM_THREADS = $threads
+        NUMEXPR_NUM_THREADS = $threads
+    }
 }
 
 function Get-EffectiveComputeType {
@@ -1373,6 +1422,8 @@ function Invoke-ExternalProcess {
             PassThru = $true
         }
         $process = Start-Process @startParams
+        # Lager dan normaal, ook als dit proces zelf (nog) niet zo draait: transcriptie mag de pc niet traag maken.
+        try { $process.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal } catch {}
         if ($OnStarted) {
             try { & $OnStarted $process } catch {}
         }
@@ -2109,7 +2160,7 @@ function Claim-Session {
     $claimEngine = switch ($claimProfile) {
         'amd-gpu' { 'pending:FFmpeg Whisper GPU' }
         'nvidia-cuda' { ("pending:whisperx:{0}" -f $script:CurrentConfig.Model) }
-        'cpu-fallback' { ("pending:whisperx-cpu:{0}" -f $script:CurrentConfig.Model) }
+        'cpu-fallback' { ("pending:whisperx-cpu:{0}" -f $script:CurrentConfig.CpuModel) }
         default { 'pending' }
     }
     Set-Prop -Object $Manifest -Name 'transcription_engine' -Value $claimEngine
@@ -2321,15 +2372,13 @@ function Invoke-PythonWorker {
         $hardwareSnapshot | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $hardwareProfilePath -Encoding UTF8
     } catch { Write-DiagnosticsLog -SessionDir $SessionDir -Message "hardware_profile.json kon niet worden geschreven: $($_.Exception.Message)" }
     Write-DiagnosticsLog -SessionDir $SessionDir -Message "Resolved worker output targets: txt=$resolvedTxtPath json=$resolvedJsonPath srt=$resolvedSrtPath vtt=$resolvedVttPath model=$diagModel transcription_profile=$effectiveTranscriptionProfile compute=$effectiveComputeType batch=$effectiveBatchSize profile=$(Get-WorkerProfileSummary) whispercppExe=$($script:CurrentConfig.WhisperCppExe) whispercppModel=$effectiveWhisperCppModelPath min=$($script:CurrentConfig.MinSpeakers) max=$($script:CurrentConfig.MaxSpeakers)"
-    # Het ingestelde WhisperX-model voor als de AMD-route terugvalt op de processor.
-    $env:CAPTIVOX_WHISPERX_MODEL = [string]$script:CurrentConfig.Model
     $arguments = @(
         $HelperScript,
         '--input', $AudioPath,
         '--output-txt', $resolvedTxtPath,
         '--output-json', $resolvedJsonPath,
         '--language', $script:CurrentConfig.Language,
-        '--model', $(if ($effectiveTranscriptionProfile -eq 'amd-gpu') { 'ffmpeg-whisper-gpu' } else { $script:CurrentConfig.Model }),
+        '--model', (Get-EffectiveWhisperXModel -Profile $effectiveTranscriptionProfile),
         '--batch-size', ([string]$effectiveBatchSize),
         '--compute-type', $effectiveComputeType,
         '--transcription-profile', $effectiveTranscriptionProfile,
@@ -2349,7 +2398,8 @@ function Invoke-PythonWorker {
     if ($effectiveDiarizationEnabled -and $script:CurrentConfig.MinSpeakers -gt 0) { $arguments += @('--min-speakers', ([string]$script:CurrentConfig.MinSpeakers)) }
     if ($effectiveDiarizationEnabled -and $script:CurrentConfig.MaxSpeakers -gt 0) { $arguments += @('--max-speakers', ([string]$script:CurrentConfig.MaxSpeakers)) }
 
-    $envVars = @{ PYANNOTE_METRICS_ENABLED = '0' }
+    $envVars = Get-HelperResourceEnvironment
+    $envVars['PYANNOTE_METRICS_ENABLED'] = '0'
     if ($HfToken) {
         $envVars['HF_TOKEN'] = $HfToken
         $envVars['HUGGINGFACE_TOKEN'] = $HfToken
@@ -2452,7 +2502,7 @@ function Invoke-TranscriptForSession {
     Write-Log 'INFO' "Start transcriptie voor sessie: $SessionDir"
     Update-WorkerRuntimeStatus -State 'processing' -Message 'Sessie claimen' -ActiveSessionDir $SessionDir -MarkActivity
     Write-SessionLog -SessionDir $SessionDir -Message "Transcriptiewerker claimt sessie op basis van READY. Input: $audioPath"
-    Write-DiagnosticsLog -SessionDir $SessionDir -Message "Worker-config: runtime=$($script:CurrentConfig.RuntimeMode) model=$($script:CurrentConfig.Model) diarization=$($script:CurrentConfig.DiarizationEnabled) mode=$(Get-EffectiveDiarizationMode) acceleration=$(Get-EffectiveDiarizationAcceleration) compute=$(Get-EffectiveComputeType) profile=$(Get-WorkerProfileSummary) preserveOutput=$($script:CurrentConfig.PreserveWorkerOutput) format=$($script:CurrentConfig.TranscriptOutputFormat)"
+    Write-DiagnosticsLog -SessionDir $SessionDir -Message "Worker-config: runtime=$($script:CurrentConfig.RuntimeMode) model=$($script:CurrentConfig.Model) cpuModel=$($script:CurrentConfig.CpuModel) cpuThreads=$CpuThreadLimit diarization=$($script:CurrentConfig.DiarizationEnabled) mode=$(Get-EffectiveDiarizationMode) acceleration=$(Get-EffectiveDiarizationAcceleration) compute=$(Get-EffectiveComputeType) profile=$(Get-WorkerProfileSummary) preserveOutput=$($script:CurrentConfig.PreserveWorkerOutput) format=$($script:CurrentConfig.TranscriptOutputFormat)"
 
     $claimAcquired = $false
     try {
@@ -2849,7 +2899,7 @@ function Invoke-SelfTest {
     Write-Log 'INFO' "Settings: $SettingsPath"
     $psInfo = Get-PowerShellHostInfo
     Write-Log 'INFO' "PowerShell: version=$($psInfo.version) edition=$($psInfo.edition) host=$($psInfo.host_path)"
-    Write-Log 'INFO' "Runtime mode: $($script:CurrentConfig.RuntimeMode) | model: $($script:CurrentConfig.Model) | diarization: $($script:CurrentConfig.DiarizationEnabled) | diagnostics: $($script:CurrentConfig.DiagnosticsMode)"
+    Write-Log 'INFO' "Runtime mode: $($script:CurrentConfig.RuntimeMode) | model: $($script:CurrentConfig.Model) | cpu-model: $($script:CurrentConfig.CpuModel) | cpu-threads: $CpuThreadLimit | diarization: $($script:CurrentConfig.DiarizationEnabled) | diagnostics: $($script:CurrentConfig.DiagnosticsMode)"
 
     $checks = [ordered]@{
         python_ok = $false
@@ -2896,15 +2946,12 @@ function Invoke-SelfTest {
     $effectiveDiarizationEnabled = [bool]$script:CurrentConfig.DiarizationEnabled
     $diagModel = if ($effectiveDiarizationEnabled) { Get-EffectiveDiarizationModel } else { '' }
     $effectiveWhisperCppModelPath = Resolve-EffectiveWhisperCppModelPath -ConfiguredPath $script:CurrentConfig.WhisperCppModelPath -TranscriptionProfile $effectiveTranscriptionProfile
-    $timingsJsonPath = Get-SessionDiagnosticsPath -SessionDir $SessionDir -FileName 'phase_timings.json'
-    # Het ingestelde WhisperX-model voor als de AMD-route terugvalt op de processor.
-    $env:CAPTIVOX_WHISPERX_MODEL = [string]$script:CurrentConfig.Model
     $arguments = @(
         $HelperScript,
         '--self-test',
         '--self-test-mode', 'quick',
         '--language', $script:CurrentConfig.Language,
-        '--model', $(if ($effectiveTranscriptionProfile -eq 'amd-gpu') { 'ffmpeg-whisper-gpu' } else { $script:CurrentConfig.Model }),
+        '--model', (Get-EffectiveWhisperXModel -Profile $effectiveTranscriptionProfile),
         '--batch-size', ([string]$effectiveBatchSize),
         '--compute-type', $effectiveComputeType,
         '--transcription-profile', $effectiveTranscriptionProfile,
@@ -2918,7 +2965,8 @@ function Invoke-SelfTest {
     if ($effectiveDiarizationEnabled -and $script:CurrentConfig.MinSpeakers -gt 0) { $arguments += @('--min-speakers', ([string]$script:CurrentConfig.MinSpeakers)) }
     if ($effectiveDiarizationEnabled -and $script:CurrentConfig.MaxSpeakers -gt 0) { $arguments += @('--max-speakers', ([string]$script:CurrentConfig.MaxSpeakers)) }
 
-    $envVars = @{ PYANNOTE_METRICS_ENABLED = '0' }
+    $envVars = Get-HelperResourceEnvironment
+    $envVars['PYANNOTE_METRICS_ENABLED'] = '0'
     if ($hfToken) {
         $envVars['HF_TOKEN'] = $hfToken
         $envVars['HUGGINGFACE_TOKEN'] = $hfToken

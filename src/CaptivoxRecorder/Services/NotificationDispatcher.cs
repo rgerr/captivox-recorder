@@ -37,7 +37,9 @@ internal sealed class NotificationDispatcher
                 return Task.CompletedTask;
             }
 
-            // Ook in de lokale geschiedenis (pagina Meldingen en de bel).
+            // In de taal van de interface; zo ook in de lokale geschiedenis (pagina Meldingen en de bel).
+            title = UiText.T(title);
+            message = UiText.T(message);
             NotificationHistoryStore.Append(AppRuntime.GetSettingsDirectory(), DateTimeOffset.UtcNow, title, message);
             if (includeWindows)
             {

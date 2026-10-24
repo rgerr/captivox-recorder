@@ -93,12 +93,12 @@ public sealed partial class MainForm
         _libraryContextMenu.Opening += LibraryContextMenu_Opening;
         _libraryContextAssignMeetingTypeItem.Click += (_, _) => ShowAssignMeetingTypeDialog();
         _libraryContextAssignTopicsItem.Click += (_, _) => ShowAssignTopicsDialog();
-        _toolTip.SetToolTip(_libraryEditTagsButton, "Beheer organisaties, projecten/dossiers, overlegtypen en onderwerpen voor de bibliotheek.");
-        _toolTip.SetToolTip(_libraryResetFiltersButton, "Zet organisatie-, project-, overlegtype- en onderwerpfilters terug naar alle sessies.");
-        _toolTip.SetToolTip(_libraryOpenTranscriptButton, "Open het transcript van de geselecteerde sessie.");
-        _toolTip.SetToolTip(_libraryOpenFolderButton, "Open de sessiemap van de geselecteerde sessie.");
-        _toolTip.SetToolTip(_libraryCopyTranscriptButton, "Kopieer het transcript naar het klembord.");
-        _toolTip.SetToolTip(_libraryDeleteButton, "Verwijder de geselecteerde sessie na bevestiging.");
+        SetUiToolTip(_libraryEditTagsButton, "Beheer organisaties, projecten/dossiers, overlegtypen en onderwerpen voor de bibliotheek.");
+        SetUiToolTip(_libraryResetFiltersButton, "Zet organisatie-, project-, overlegtype- en onderwerpfilters terug naar alle sessies.");
+        SetUiToolTip(_libraryOpenTranscriptButton, "Open het transcript van de geselecteerde sessie.");
+        SetUiToolTip(_libraryOpenFolderButton, "Open de sessiemap van de geselecteerde sessie.");
+        SetUiToolTip(_libraryCopyTranscriptButton, "Kopieer het transcript naar het klembord.");
+        SetUiToolTip(_libraryDeleteButton, "Verwijder de geselecteerde sessie na bevestiging.");
 
         if (!_libraryContextMenu.Items.Contains(_libraryContextAssignmentSeparator))
         {
@@ -245,41 +245,41 @@ public sealed partial class MainForm
 
         if (!string.IsNullOrWhiteSpace(query))
         {
-            parts.Add($"zoekterm = \"{query}\"");
+            parts.Add(UiText.F("zoekterm = \"{0}\"", query));
         }
 
         if (!string.IsNullOrWhiteSpace(context))
         {
-            parts.Add($"{UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "organisatie =")} {context}");
+            parts.Add(UiText.F("organisatie = {0}", context));
         }
 
         if (!string.IsNullOrWhiteSpace(subcontext))
         {
-            parts.Add($"{UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "project / dossier =")} {subcontext}");
+            parts.Add(UiText.F("project / dossier = {0}", subcontext));
         }
 
         var meetingType = GetSelectedLibraryMeetingTypeFilter();
         if (!string.IsNullOrWhiteSpace(meetingType))
         {
-            parts.Add($"{UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "overlegtype =")} {meetingType}");
+            parts.Add(UiText.F("overlegtype = {0}", meetingType));
         }
 
         if (!string.IsNullOrWhiteSpace(tag))
         {
-            parts.Add($"{UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "onderwerp =")} {tag}");
+            parts.Add(UiText.F("onderwerp = {0}", tag));
         }
 
         if (parts.Count == 0)
         {
-            _libraryFilterSummaryLabel.Text = $"{UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Alle sessies zichtbaar.")} {visibleEntries} sessie(s) {UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "in huidige weergave.")}";
+            _libraryFilterSummaryLabel.Text = UiText.F("Alle sessies zichtbaar. {0} sessie(s) in huidige weergave.", visibleEntries);
             _libraryFilterSummaryLabel.ForeColor = Color.FromArgb(97, 107, 121);
             return;
         }
 
         var detail = string.Join(" · ", parts);
         _libraryFilterSummaryLabel.Text = visibleEntries == 0 && totalEntries > 0
-            ? $"{UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Actieve filters:")} {detail}. {UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Er zijn nu 0 sessies zichtbaar, terwijl de bibliotheek")} {totalEntries} {UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "sessie(s) bevat. Gebruik Reset filters om alles weer te tonen.")}"
-            : $"{UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Actieve filters:")} {detail}. {UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Zichtbaar:")} {visibleEntries} {UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "van")} {totalEntries} sessie(s).";
+            ? UiText.F("Actieve filters: {0}. Er zijn nu 0 sessies zichtbaar, terwijl de bibliotheek {1} sessie(s) bevat. Gebruik Reset filters om alles weer te tonen.", detail, totalEntries)
+            : UiText.F("Actieve filters: {0}. Zichtbaar: {1} van {2} sessie(s).", detail, visibleEntries, totalEntries);
         _libraryFilterSummaryLabel.ForeColor = visibleEntries == 0 && totalEntries > 0
             ? Color.FromArgb(146, 64, 14)
             : Color.FromArgb(97, 107, 121);
@@ -547,7 +547,7 @@ public sealed partial class MainForm
         if (entry is null)
         {
             _libraryDetailRefreshCts = null;
-            _libraryTranscriptPreviewTextBox.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Selecteer een sessie om transcriptdetails te bekijken.");
+            _libraryTranscriptPreviewTextBox.Text = UiText.T("Selecteer een sessie om transcriptdetails te bekijken.");
             _libraryImportStatusTextBox.Text = "Selecteer een geimporteerde opname om recorded_at en imported_at te bekijken.";
             BindLibrarySessionMetadataControls(null);
             return;
@@ -558,7 +558,7 @@ public sealed partial class MainForm
         _libraryDetailRefreshCts = cts;
 
         BindLibrarySessionMetadataControls(entry);
-        _libraryTranscriptPreviewTextBox.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Transcript laden...");
+        _libraryTranscriptPreviewTextBox.Text = UiText.T("Transcript laden...");
         _libraryImportStatusTextBox.Text = "Importstatus laden...";
 
         try
@@ -570,7 +570,7 @@ public sealed partial class MainForm
             }
 
             _libraryTranscriptPreviewTextBox.Text = snapshot.TranscriptPreview;
-            _libraryImportStatusTextBox.Text = snapshot.ImportStatusPreview;
+            _libraryImportStatusTextBox.Text = UiText.T(snapshot.ImportStatusPreview);
             BindLibrarySessionMetadataControls(entry);
         }
         catch (OperationCanceledException)
@@ -584,7 +584,7 @@ public sealed partial class MainForm
             }
 
             AppRuntime.LogException("Library detail refresh failed", ex);
-            _libraryTranscriptPreviewTextBox.Text = $"Sessiedetails konden niet worden geladen: {ex.Message}";
+            _libraryTranscriptPreviewTextBox.Text = UiText.F("Sessiedetails konden niet worden geladen: {0}", ex.Message);
             _libraryImportStatusTextBox.Text = "Importstatus laden mislukt.";
         }
     }
@@ -615,24 +615,24 @@ public sealed partial class MainForm
         var lines = new List<string>();
         lines.Add("Import inbox");
         lines.Add("");
-        lines.Add($"Bestand: {entry.SourceFileName ?? "onbekend"}");
+        lines.Add(UiText.F("Bestand: {0}", entry.SourceFileName ?? UiText.T("onbekend")));
         lines.Add($"Importprofiel: {entry.ImportSourceProfile ?? "unknown"}");
         if (!string.IsNullOrWhiteSpace(entry.ImportSourceProfileReason))
         {
             lines.Add($"Profielreden: {entry.ImportSourceProfileReason}");
         }
-        lines.Add($"Duur: {(entry.DurationSeconds.HasValue ? TimeSpan.FromSeconds(entry.DurationSeconds.Value).ToString(@"hh\:mm\:ss") : "onbekend")}");
-        lines.Add($"Embedded recorded_at: {(entry.EmbeddedRecordedAt.HasValue ? entry.EmbeddedRecordedAt.Value.LocalDateTime.ToString("dd-MM-yyyy HH:mm:ss") : "niet beschikbaar")}");
-        lines.Add($"OneDrive observed_at: {(entry.OneDriveObservedAt.HasValue ? entry.OneDriveObservedAt.Value.LocalDateTime.ToString("dd-MM-yyyy HH:mm:ss") : "niet beschikbaar")}");
-        lines.Add($"Opnametijd recorded_at: {(entry.RecordedAt.HasValue ? entry.RecordedAt.Value.LocalDateTime.ToString("dd-MM-yyyy HH:mm:ss") : "onbekend")}");
-        lines.Add($"Bron recorded_at: {entry.RecordedAtSource ?? "onbekend"}");
+        lines.Add(UiText.F("Duur: {0}", entry.DurationSeconds.HasValue ? TimeSpan.FromSeconds(entry.DurationSeconds.Value).ToString(@"hh\:mm\:ss") : UiText.T("onbekend")));
+        lines.Add("Embedded recorded_at: " + (entry.EmbeddedRecordedAt.HasValue ? entry.EmbeddedRecordedAt.Value.LocalDateTime.ToString("dd-MM-yyyy HH:mm:ss") : UiText.T("niet beschikbaar")));
+        lines.Add("OneDrive observed_at: " + (entry.OneDriveObservedAt.HasValue ? entry.OneDriveObservedAt.Value.LocalDateTime.ToString("dd-MM-yyyy HH:mm:ss") : UiText.T("niet beschikbaar")));
+        lines.Add(UiText.F("Opnametijd recorded_at: {0}", entry.RecordedAt.HasValue ? entry.RecordedAt.Value.LocalDateTime.ToString("dd-MM-yyyy HH:mm:ss") : UiText.T("onbekend")));
+        lines.Add(UiText.F("Bron recorded_at: {0}", entry.RecordedAtSource ?? UiText.T("onbekend")));
         lines.Add($"Metadata-confidence: {entry.RecordedAtConfidence ?? "unknown"}");
         if (!string.IsNullOrWhiteSpace(entry.RecordedAtConfidenceReason))
         {
             lines.Add($"Confidence-uitleg: {entry.RecordedAtConfidenceReason}");
         }
-        lines.Add($"Handmatig bevestigd: {(entry.ManualRecordedAtConfirmed ? "ja" : "nee")}");
-        lines.Add($"Importtijd imported_at: {(entry.ImportedAt.HasValue ? entry.ImportedAt.Value.LocalDateTime.ToString("dd-MM-yyyy HH:mm:ss") : "onbekend")}");
+        lines.Add(UiText.F("Handmatig bevestigd: {0}", UiText.T(entry.ManualRecordedAtConfirmed ? "ja" : "nee")));
+        lines.Add(UiText.F("Importtijd imported_at: {0}", entry.ImportedAt.HasValue ? entry.ImportedAt.Value.LocalDateTime.ToString("dd-MM-yyyy HH:mm:ss") : UiText.T("onbekend")));
 
         return string.Join(Environment.NewLine, lines);
     }
@@ -699,7 +699,7 @@ public sealed partial class MainForm
 
     private void RebindFilterCombo(ComboBox comboBox, string allLabel, IReadOnlyList<string> values, string selectedValue)
     {
-        var localizedAllLabel = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, allLabel);
+        var localizedAllLabel = UiText.T(allLabel);
         comboBox.BeginUpdate();
         try
         {
@@ -732,7 +732,7 @@ public sealed partial class MainForm
             return true;
         }
 
-        var localizedLabel = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, canonicalLabel);
+        var localizedLabel = UiText.T(canonicalLabel);
         return string.Equals(value, canonicalLabel, StringComparison.OrdinalIgnoreCase)
                || string.Equals(value, localizedLabel, StringComparison.OrdinalIgnoreCase);
     }
@@ -1042,7 +1042,7 @@ public sealed partial class MainForm
 
 
         return parts.Count == 0
-            ? UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Nog geen status")
+            ? UiText.T("Nog geen status")
             : string.Join(" · ", parts);
     }
 
@@ -1073,34 +1073,34 @@ public sealed partial class MainForm
         var selectedEntries = GetSelectedLibraryEntries();
         if (selectedEntries.Count == 0)
         {
-            _librarySessionSelectionSummaryLabel.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Nog geen sessie geselecteerd.");
-            _librarySessionOrganizationValueLabel.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Nog niet toegewezen");
-            _librarySessionProjectValueLabel.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Nog niet toegewezen");
-            _librarySessionMeetingTypeValueLabel.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Nog niet toegewezen");
-            _librarySessionCalendarSubjectValueLabel.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Nog geen agenda-match");
-            _librarySessionParticipantsValueLabel.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Nog geen deelnemers");
-            _librarySessionAgendaStatusValueLabel.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Nog geen agenda-status");
-            _librarySessionTopicsValueLabel.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Geen onderwerpen");
-            _librarySessionRuntimeStatusValueLabel.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Nog geen status");
+            _librarySessionSelectionSummaryLabel.Text = UiText.T("Nog geen sessie geselecteerd.");
+            _librarySessionOrganizationValueLabel.Text = UiText.T("Nog niet toegewezen");
+            _librarySessionProjectValueLabel.Text = UiText.T("Nog niet toegewezen");
+            _librarySessionMeetingTypeValueLabel.Text = UiText.T("Nog niet toegewezen");
+            _librarySessionCalendarSubjectValueLabel.Text = UiText.T("Nog geen agenda-match");
+            _librarySessionParticipantsValueLabel.Text = UiText.T("Nog geen deelnemers");
+            _librarySessionAgendaStatusValueLabel.Text = UiText.T("Nog geen agenda-status");
+            _librarySessionTopicsValueLabel.Text = UiText.T("Geen onderwerpen");
+            _librarySessionRuntimeStatusValueLabel.Text = UiText.T("Nog geen status");
             _libraryArtifactStatusLabel.Text = "Nog geen artefactstatus";
             return;
         }
 
         if (selectedEntries.Count == 1 && entry is not null)
         {
-            _librarySessionSelectionSummaryLabel.Text = $"{UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Geselecteerde sessie:")} {GetLibraryDisplayTitle(entry)} · {entry.CreatedAt.LocalDateTime:dd-MM-yyyy HH:mm}";
-            _librarySessionOrganizationValueLabel.Text = string.IsNullOrWhiteSpace(entry.ContextName) ? UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Nog niet toegewezen") : entry.ContextName;
-            _librarySessionProjectValueLabel.Text = string.IsNullOrWhiteSpace(entry.SubcontextName) ? UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Nog niet toegewezen") : entry.SubcontextName;
-            _librarySessionMeetingTypeValueLabel.Text = string.IsNullOrWhiteSpace(entry.MeetingType) ? UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Nog niet toegewezen") : entry.MeetingType;
-            _librarySessionCalendarSubjectValueLabel.Text = string.IsNullOrWhiteSpace(entry.CalendarSubject) ? UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Nog geen agenda-match") : entry.CalendarSubject;
-            _librarySessionParticipantsValueLabel.Text = entry.Participants.Count == 0 ? UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Nog geen deelnemers") : string.Join(", ", entry.Participants);
-            _librarySessionTopicsValueLabel.Text = entry.Tags.Count == 0 ? UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Geen onderwerpen") : string.Join(", ", entry.Tags);
+            _librarySessionSelectionSummaryLabel.Text = UiText.F("Geselecteerde sessie: {0} · {1:dd-MM-yyyy HH:mm}", GetLibraryDisplayTitle(entry), entry.CreatedAt.LocalDateTime);
+            _librarySessionOrganizationValueLabel.Text = string.IsNullOrWhiteSpace(entry.ContextName) ? UiText.T("Nog niet toegewezen") : entry.ContextName;
+            _librarySessionProjectValueLabel.Text = string.IsNullOrWhiteSpace(entry.SubcontextName) ? UiText.T("Nog niet toegewezen") : entry.SubcontextName;
+            _librarySessionMeetingTypeValueLabel.Text = string.IsNullOrWhiteSpace(entry.MeetingType) ? UiText.T("Nog niet toegewezen") : entry.MeetingType;
+            _librarySessionCalendarSubjectValueLabel.Text = string.IsNullOrWhiteSpace(entry.CalendarSubject) ? UiText.T("Nog geen agenda-match") : entry.CalendarSubject;
+            _librarySessionParticipantsValueLabel.Text = entry.Participants.Count == 0 ? UiText.T("Nog geen deelnemers") : string.Join(", ", entry.Participants);
+            _librarySessionTopicsValueLabel.Text = entry.Tags.Count == 0 ? UiText.T("Geen onderwerpen") : string.Join(", ", entry.Tags);
             _librarySessionRuntimeStatusValueLabel.Text = BuildLibraryRuntimeStatusText(entry);
             _libraryArtifactStatusLabel.Text = BuildLibraryArtifactStatusText(entry);
             return;
         }
 
-        _librarySessionSelectionSummaryLabel.Text = $"{selectedEntries.Count} {UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "sessies geselecteerd. Toewijzingen via rechtermuisknop worden op alle geselecteerde sessies toegepast.")}";
+        _librarySessionSelectionSummaryLabel.Text = UiText.F("{0} sessies geselecteerd. Toewijzingen via rechtermuisknop worden op alle geselecteerde sessies toegepast.", selectedEntries.Count);
 
         var organizationValues = selectedEntries
             .Select(x => string.IsNullOrWhiteSpace(x.ContextName) ? string.Empty : x.ContextName.Trim())
@@ -1123,21 +1123,21 @@ public sealed partial class MainForm
             .ToList();
 
         _librarySessionOrganizationValueLabel.Text = organizationValues.Count == 1
-            ? (string.IsNullOrWhiteSpace(organizationValues[0]) ? UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Nog niet toegewezen") : organizationValues[0])
-            : UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Meerdere waarden");
+            ? (string.IsNullOrWhiteSpace(organizationValues[0]) ? UiText.T("Nog niet toegewezen") : organizationValues[0])
+            : UiText.T("Meerdere waarden");
         _librarySessionProjectValueLabel.Text = projectValues.Count == 1
-            ? (string.IsNullOrWhiteSpace(projectValues[0]) ? UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Nog niet toegewezen") : projectValues[0])
-            : UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Meerdere waarden");
+            ? (string.IsNullOrWhiteSpace(projectValues[0]) ? UiText.T("Nog niet toegewezen") : projectValues[0])
+            : UiText.T("Meerdere waarden");
         _librarySessionMeetingTypeValueLabel.Text = meetingTypeValues.Count == 1
-            ? (string.IsNullOrWhiteSpace(meetingTypeValues[0]) ? UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Nog niet toegewezen") : meetingTypeValues[0])
-            : UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Meerdere waarden");
-        _librarySessionCalendarSubjectValueLabel.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Meerdere sessies geselecteerd");
-        _librarySessionParticipantsValueLabel.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Meerdere sessies geselecteerd");
-        _librarySessionAgendaStatusValueLabel.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Meerdere sessies geselecteerd");
+            ? (string.IsNullOrWhiteSpace(meetingTypeValues[0]) ? UiText.T("Nog niet toegewezen") : meetingTypeValues[0])
+            : UiText.T("Meerdere waarden");
+        _librarySessionCalendarSubjectValueLabel.Text = UiText.T("Meerdere sessies geselecteerd");
+        _librarySessionParticipantsValueLabel.Text = UiText.T("Meerdere sessies geselecteerd");
+        _librarySessionAgendaStatusValueLabel.Text = UiText.T("Meerdere sessies geselecteerd");
         _librarySessionTopicsValueLabel.Text = commonTopics.Count > 0
-            ? $"{UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Gemeenschappelijk:")} {string.Join(", ", commonTopics)}"
-            : UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Geen gemeenschappelijke onderwerpen");
-        _librarySessionRuntimeStatusValueLabel.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Meerdere sessies geselecteerd");
+            ? UiText.F("Gemeenschappelijk: {0}", string.Join(", ", commonTopics))
+            : UiText.T("Geen gemeenschappelijke onderwerpen");
+        _librarySessionRuntimeStatusValueLabel.Text = UiText.T("Meerdere sessies geselecteerd");
         _libraryArtifactStatusLabel.Text = "Artefactstatus niet beschikbaar bij meerdere geselecteerde sessies";
     }
 
@@ -1160,7 +1160,7 @@ public sealed partial class MainForm
 
         if (GetSelectedLibraryEntry() is null)
         {
-            _libraryTranscriptPreviewTextBox.Text = UiLocalizationService.TranslateText(_appSettings.Ui.LanguageProfile, "Selecteer een sessie om transcriptdetails te bekijken.");
+            _libraryTranscriptPreviewTextBox.Text = UiText.T("Selecteer een sessie om transcriptdetails te bekijken.");
             _libraryImportStatusTextBox.Text = "Selecteer een geimporteerde opname om recorded_at en imported_at te bekijken.";
         }
     }
@@ -1697,7 +1697,7 @@ public sealed partial class MainForm
             manifest.RecordedAt = null;
             manifest.RecordedAtSource = "manual_cleared";
             manifest.RecordedAtConfidence = "unknown";
-            manifest.RecordedAtConfidenceReason = "recorded_at handmatig gewist door gebruiker.";
+            manifest.RecordedAtConfidenceReason = "recorded_at handmatig gewist door gebruiker."; // geen vertaling
             manifest.ManualRecordedAtConfirmed = false;
             manifest.ManualRecordedAtConfirmedAt = null;
             manifest.AgendaMatchStatus = "manual_review_required";
@@ -1705,14 +1705,14 @@ public sealed partial class MainForm
             manifest.AgendaMatchBasis = "manual_cleared";
             manifest.AgendaMatchRecordedAtUsed = null;
             manifest.AgendaMatchTimeDeltaMinutes = null;
-            manifest.AgendaMatchReason = "recorded_at handmatig gewist; agenda-match vereist handmatige review.";
+            manifest.AgendaMatchReason = "recorded_at handmatig gewist; agenda-match vereist handmatige review."; // geen vertaling
         }
         else
         {
             manifest.RecordedAt = new DateTimeOffset(picker.Value);
             manifest.RecordedAtSource = "manual_user_corrected";
             manifest.RecordedAtConfidence = "high";
-            manifest.RecordedAtConfidenceReason = "recorded_at handmatig gecorrigeerd en bevestigd door gebruiker.";
+            manifest.RecordedAtConfidenceReason = "recorded_at handmatig gecorrigeerd en bevestigd door gebruiker."; // geen vertaling
             manifest.ManualRecordedAtConfirmed = true;
             manifest.ManualRecordedAtConfirmedAt = DateTimeOffset.Now;
             manifest.AgendaMatchStatus = "match_candidate";
@@ -1720,7 +1720,7 @@ public sealed partial class MainForm
             manifest.AgendaMatchBasis = "manual_user_corrected_recorded_at";
             manifest.AgendaMatchRecordedAtUsed = manifest.RecordedAt;
             manifest.AgendaMatchTimeDeltaMinutes = null;
-            manifest.AgendaMatchReason = "handmatig gecorrigeerde opnametijd beschikbaar voor nieuwe agenda-match.";
+            manifest.AgendaMatchReason = "handmatig gecorrigeerde opnametijd beschikbaar voor nieuwe agenda-match."; // geen vertaling
         }
         manifest.AgendaMatchCandidates = new List<AgendaMatchCandidateSnapshot>();
         File.WriteAllText(manifestPath, JsonSerializer.Serialize(manifest, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }));
@@ -1744,8 +1744,8 @@ public sealed partial class MainForm
         var metadata = LibrarySessionMetadataService.Load(entry.DirectoryPath);
         metadata.ImportInboxStatus = manifest.AgendaMatchStatus ?? "manual_review_required";
         metadata.RecordedAtConfidenceNote = clearCheckBox.Checked
-            ? "recorded_at handmatig gewist; agenda-match vereist handmatige review."
-            : "recorded_at handmatig gecorrigeerd door gebruiker; gebruik deze tijd voor nieuwe agenda-match.";
+            ? "recorded_at handmatig gewist; agenda-match vereist handmatige review." // geen vertaling
+            : "recorded_at handmatig gecorrigeerd door gebruiker; gebruik deze tijd voor nieuwe agenda-match."; // geen vertaling
         LibrarySessionMetadataService.Save(entry.DirectoryPath, metadata);
 
         _ = RunLibraryUiActionAsync("Bibliotheek vernieuwen", ct => RefreshLibraryAsync(ct));

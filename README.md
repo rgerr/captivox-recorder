@@ -2,125 +2,151 @@
 
 ![Captivox Recorder](captivox-banner.png)
 
-**Gratis Windows-programma dat je gesprekken opneemt en ze op je eigen pc uitschrijft.** Captivox neemt tegelijk je microfoon en het geluid van de pc op (Teams, Zoom, Google Meet of een ander programma), en zet het gesprek daarna op de achtergrond om in tekst met [WhisperX](https://github.com/m-bain/whisperX). Er gaat niets naar de cloud.
+**A free Windows app that records your conversations and transcribes them on your own PC.**
 
-- Versie: **2.0.0** (oktober 2026)
-- Licentie: [GPL-3.0](LICENSE)
-- Voor: Windows 10 en 11 (64-bit), Nederlandstalige interface
+Captivox Recorder records your microphone and your PC's audio at the same time (Teams, Zoom, Google Meet or any other app), then turns the conversation into text in the background with [WhisperX](https://github.com/m-bain/whisperX). Everything happens on your own computer: no cloud, no account, no telemetry.
 
-> In English: see [the summary at the bottom](#in-english).
+- Version: **2.0.1** (October 2026)
+- Licence: [GPL-3.0](LICENSE)
+- Runs on: Windows 10 and 11 (64-bit)
+- Languages: the interface is in English, Dutch, German or French; transcription in Dutch, English, German, French, Spanish, Italian, Chinese and Japanese
 
-## Wat het doet
+## Why Captivox
 
-- **Overzichtelijk**: links *Vandaag*, *Overleggen*, *Meldingen* en *Instellingen*. Vandaag toont wat aandacht nodig heeft en een grote knop om op te nemen; Overleggen is de lijst van al je gesprekken met zoeken en de uitgeschreven tekst ernaast.
-- **Opnemen**: jouw microfoon en het pc-geluid tegelijk, met een niveaumeter per bron. Elke opname krijgt een eigen map.
-- **Spraakvriendelijke mix**: beide bronnen worden samengevoegd tot een heldere opname (16 kHz mono), afgestemd op spraakherkenning.
-- **Uitschrijven**: automatisch na het stoppen, met Whisper (standaard `large-v2`). Kies de taal van het gesprek: Nederlands, Engels, Duits, Frans, Spaans of Italiaans.
-- **Videokaart**: NVIDIA (CUDA) en AMD (Vulkan) worden herkend; zonder geschikte kaart werkt alles op de processor.
-- **Bestanden toevoegen**: een bestaande opname (wav, mp3, m4a, aac, mp4) uitschrijven via *Audio importeren* op Overleggen.
-- **Na afloop**: transcript lezen, kopieren, opslaan als `.txt`, `.srt` of `.vtt`, een naam geven, opnieuw uitschrijven met andere instellingen, of naar de prullenbak.
-- **Meldingen**: een Windows-melding als een gesprek is uitgeschreven of als er iets misging; de laatste meldingen staan ook in het programma.
-- **Onopvallend**: draait in het systeemvak; starten en stoppen met **Ctrl+Shift+F9**, venster tonen of verbergen met **Ctrl+Shift+F10**. Kan desgewenst met Windows mee starten.
-- **Bewaakt de opname**: waarschuwt als de microfoon minutenlang stil is, als een geluidsapparaat wegvalt of als de opname te groot wordt.
-- **Opruimen** (optioneel, standaard uit): oude opnames en transcripten na een ingesteld aantal dagen weggooien.
+I work in information security and spend a lot of my week in meetings. I wanted a way to transcribe those conversations and get the useful parts out of them afterwards: action items, minutes, decisions. What I did not want was to upload recordings of meetings to a cloud service. Conversations are full of personal and confidential information, and in my line of work that is exactly the kind of data you keep close.
 
-## Privacy in het kort
+I couldn't find a tool that did all of this entirely on my own PC, so I built one for myself. Captivox Recorder is the free part of that work, shared in the hope that it is useful to others too. Captivox is made in the Netherlands.
 
-- Geen account, geen telemetrie, geen cloud. Opnames en transcripten staan in je eigen gebruikersmap (`%USERPROFILE%\Captivox\Opnames`).
-- Internet is alleen nodig bij de installatie (Python-pakketten en FFmpeg) en om de spraakmodellen eenmalig te downloaden van Hugging Face.
+## What it does
 
-Meer in [PRIVACY.md](PRIVACY.md).
+- **Clear layout**: four pages on the left: *Today*, *Meetings*, *Notifications* and *Settings*, plus a page about Captivox Pro. *Today* shows what needs your attention and a big record button; *Meetings* lists all your conversations, with search and the transcript right next to it.
+- **Your language**: the interface is in English, Dutch, German or French. The installer uses the language you pick during setup; change it later under *Settings*, *General* (it takes effect after a restart).
+- **Recording**: your microphone and your PC's audio at the same time, with a level meter for each source. Every recording gets its own folder.
+- **Speech-friendly mix**: both sources are merged into one clear recording (16 kHz mono), tuned for speech recognition.
+- **Transcription**: starts automatically when you stop recording, using Whisper (`large-v2` on an NVIDIA card, `large-v3-turbo` otherwise). Choose the language of the conversation: Dutch, English, German, French, Spanish, Italian, Chinese or Japanese.
+- **Graphics card support**: NVIDIA cards via CUDA, set up automatically. Otherwise, including with an AMD card, Captivox transcribes on the processor (CPU) at low priority with the faster `large-v3-turbo` model, so your PC stays usable and the text stays accurate. With an AMD card you can choose *Fast on the graphics card (AMD)* under *Settings*, *Recording*: much faster through Vulkan, but less accurate.
+- **Import existing files**: transcribe an existing recording (wav, mp3, m4a, aac, mp4) with *Import audio* on the *Meetings* page.
+- **Afterwards**: read the transcript, copy it, save it as `.txt`, `.srt` or `.vtt`, give the conversation a name, transcribe it again with different settings, or move it to the Recycle Bin.
+- **Notifications**: a Windows notification when a conversation has been transcribed or when something went wrong; the latest notifications are also listed in the app.
+- **Stays out of the way**: runs in the system tray; start and stop recording with **Ctrl+Shift+F9**, show or hide the window with **Ctrl+Shift+F10**. It can start with Windows if you like.
+- **Keeps an eye on the recording**: warns you if the microphone has been silent for minutes, if an audio device disappears, or if the recording is getting too large.
+- **Clean-up** (optional, off by default): delete old recordings and transcripts after a number of days you choose.
 
-**Wees open als je opneemt.** Laat de anderen in het gesprek weten dat je opneemt en waarvoor. Een opname met stemmen en namen is een persoonsgegeven; bewaar hem niet langer dan nodig en deel hem niet zomaar.
+## Privacy in short
 
-## Wat je nodig hebt
+- No account, no telemetry, no cloud. Recordings and transcripts are stored in your own user folder (`%USERPROFILE%\Captivox\Opnames`).
+- An internet connection is only needed during installation, when Captivox downloads Python, FFmpeg, the Python packages and the speech models, and the first time you switch to another language (a small model for the timestamps in that language).
 
-- Windows 10 of 11, 64-bit.
-- Ongeveer 10 GB vrije ruimte: ongeveer 3 GB voor de transcriptie-omgeving, 4 tot 5 GB voor de modellen, en ruimte voor je opnames (ongeveer 2 MB per minuut na het mixen).
-- Internet tijdens de installatie en de eerste transcriptie.
-- Liefst een NVIDIA- of AMD-videokaart. Op alleen de processor werkt het ook, maar dan kan uitschrijven langer duren dan het gesprek zelf. Kies dan in Instellingen het model `medium` of `small`.
+More details in [PRIVACY.md](PRIVACY.md).
 
-## Installeren
+**Be open when you record.** Let the other people in the conversation know that you are recording and why. A recording with voices and names is personal data: don't keep it longer than you need to, and don't share it casually.
 
-1. **Download** `CaptivoxRecorder-2.0.0-setup.exe` onder [Releases](https://github.com/rgerr/captivox-recorder/releases). Controleer desgewenst de SHA-256 met het `.sha256`-bestand ernaast:
+## Requirements
+
+- Windows 10 or 11, 64-bit.
+- About 10 GB of free disk space (about 15 GB with an NVIDIA graphics card) for the transcription runtime and the speech models, plus room for your recordings (about 2 MB per minute after mixing). The installer checks this first.
+- An internet connection during installation.
+- Preferably an NVIDIA graphics card. It also works on the processor alone: Captivox then uses the faster `large-v3-turbo` model at low priority and leaves a few processor cores free, so you can keep working while it transcribes; it just takes longer than with a graphics card.
+
+## Install
+
+1. **Download** `CaptivoxRecorder-2.0.1-setup.exe` from [Releases](https://github.com/rgerr/captivox-recorder/releases). If you like, check the SHA-256 against the `.sha256` file next to it:
    ```powershell
-   Get-FileHash .\CaptivoxRecorder-2.0.0-setup.exe -Algorithm SHA256
+   Get-FileHash .\CaptivoxRecorder-2.0.1-setup.exe -Algorithm SHA256
    ```
-2. **Installeren**: dubbelklik het bestand. Het programma is niet digitaal ondertekend; Windows SmartScreen kan daarom waarschuwen. Kies dan *Meer informatie* en *Toch uitvoeren*. Beheerdersrechten zijn niet nodig: Captivox komt in `%LOCALAPPDATA%\Programs\CaptivoxRecorderFree`, met een snelkoppeling in het Startmenu.
-3. **Transcriptie-omgeving**: laat aan het eind *Transcriptie-omgeving nu installeren* aangevinkt (eenmalig, 10 tot 30 minuten, ongeveer 1 GB download). Er opent een PowerShell-venster. Ontbreken Python 3.10 of FFmpeg, dan vraagt het of het ze via `winget` mag installeren; antwoord met Enter. Sluit het venster als het klaar is. Later opnieuw of herstellen kan via Startmenu, *Captivox Recorder (gratis)*, *Transcriptie-omgeving installeren of herstellen*. Met een AMD-videokaart voer je daarna eenmalig in PowerShell, in de programmamap, `.\install-prereqs.ps1 -PrepareAmdGpuRuntime` uit.
-4. **Kies je apparaten**: in *Instellingen*, *Opnemen*: de microfoon en het apparaat waarop je de anderen hoort (meestal je headset of luidsprekers). Druk daarna op **Opname starten**.
+2. **Install**: double-click the file. The app is not digitally signed, so Windows SmartScreen may show a warning. If it does, choose *More info* and then *Run anyway*. No administrator rights are needed: Captivox is installed in `%LOCALAPPDATA%\Programs\CaptivoxRecorderFree`, with a shortcut in the Start menu.
+3. **Let it set itself up**: the same installer then downloads and sets up everything Captivox needs to transcribe, in its own folder: a private Python, FFmpeg, WhisperX and the speech models. You don't need to install anything else, and nothing is installed system-wide. This downloads about 5 GB (about 9 GB with an NVIDIA graphics card) and takes 10 to 30 minutes; a progress bar shows how far it is. Before it starts, the installer checks that there is enough free disk space (about 10 GB). There is no PowerShell window and nothing to answer.
+4. **Graphics card**: Captivox picks the route itself. With an NVIDIA card it uses CUDA; otherwise it transcribes on the processor, at low priority and with a faster model. With an AMD card, the installer also prepares and tests the fast route through the graphics card (Vulkan), which you can turn on yourself under *Settings*, *Recording*.
+5. **Choose your devices**: in *Settings*, *Recording*, pick your microphone and the device you hear the other people on (usually your headset or speakers). Then press **Start recording**.
 
-Liever zonder installatie? Download dan `CaptivoxRecorder-2.0.0-win-x64.zip`, pak hem uit in een map waar je zelf mag schrijven, voer in PowerShell in die map `Get-ChildItem -Recurse | Unblock-File` uit en daarna `powershell -NoProfile -ExecutionPolicy Bypass -File .\install-prereqs.ps1`, en start `CaptivoxRecorder.exe`.
+**Repair or update**: run the setup again. It keeps what is already in order and only downloads or repairs what is missing. A new version installs over the old one; your recordings and settings stay where they are.
 
-Verwijderen gaat via Windows, *Apps*, *Captivox Recorder (gratis versie)*. Je opnames blijven staan; Captivox vraagt of de transcriptie-omgeving en de instellingen ook weg mogen.
+**Portable version.** Prefer not to install? Download `CaptivoxRecorder-2.0.1-win-x64.zip` (also with a `.sha256` file), extract it to a folder you can write to, and run these two commands once in PowerShell in that folder (there is no installer to do it for you). The script downloads and sets up the same things as the installer:
 
-De eerste transcriptie duurt langer: dan worden de modellen gedownload (Whisper large-v2 ongeveer 3 GB, het uitlijnmodel voor de taal ongeveer 1 GB).
-
-
-## Zo werkt het
-
-```
-CaptivoxRecorder.exe                      workers\captivox_transcription_worker.ps1
-  neemt microfoon + pc-geluid op (WASAPI)    kijkt naar mappen met een READY-bestand
-  mixt naar audio_mix.wav (16 kHz mono)  ->  claimt de opname
-  schrijft manifest.json en READY            draait WhisperX via Python             
-                                             schrijft transcript.txt en transcript.json
+```powershell
+Get-ChildItem -Recurse | Unblock-File
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install-prereqs.ps1
 ```
 
-Elke opname is een gewone map, die je zelf kunt bekijken, kopieren of weggooien:
+Then start `CaptivoxRecorder.exe`.
 
-| Bestand | Inhoud |
+**Uninstall** through Windows, *Apps*, *Captivox Recorder Free*. Your recordings are kept; Captivox asks whether the transcription runtime and the settings should be removed as well. The downloaded speech models stay in `%USERPROFILE%\.cache\huggingface`.
+
+## How it works
+
+```
+CaptivoxRecorder.exe                         workers\captivox_transcription_worker.ps1
+  records microphone + PC audio (WASAPI)       watches for folders with a READY file
+  mixes to audio_mix.wav (16 kHz mono)    ->   claims the recording
+  writes manifest.json and READY               runs WhisperX through Python
+                                               writes transcript.txt and transcript.json
+```
+
+Every recording is an ordinary folder that you can open, copy or delete yourself:
+
+| File | Contents |
 | --- | --- |
-| `audio_mix.wav` | de opname |
-| `manifest.json` | stand van de opname en de transcriptie |
-| `session.log` | logboek van de opname |
-| `transcript.txt` | het uitgeschreven gesprek |
-| `transcript.json` | het transcript met tijden per stuk tekst |
-| `exports\` | ondertitels (`.srt`, `.vtt`), als je die aanzet |
+| `audio_mix.wav` | the recording |
+| `manifest.json` | status of the recording and the transcription |
+| `session.log` | log of the recording |
+| `transcript.txt` | the transcribed conversation |
+| `transcript.json` | the transcript with timestamps for each segment |
+| `exports\` | subtitles (`.srt`, `.vtt`), if you turn them on |
 
-Instellingen en logboeken van het programma staan in `%LOCALAPPDATA%\CaptivoxRecorderFree`.
+The app's own settings and logs are stored in `%LOCALAPPDATA%\CaptivoxRecorderFree`.
 
-## Zelf bouwen
+## Build from source
 
-Je hebt de [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) nodig, en voor het installatieprogramma [Inno Setup 6](https://jrsoftware.org/isinfo.php) (of bouw met `-SkipInstaller`).
+You need the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0), and for the installer [Inno Setup 6](https://jrsoftware.org/isinfo.php) (or build with `-SkipInstaller`).
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
-Het resultaat komt in `dist\`: een map en een zip met een zelfstandig `CaptivoxRecorder.exe` (geen .NET-installatie nodig), de worker en de hulpscripts, en het installatieprogramma `CaptivoxRecorder-<versie>-setup.exe`, elk met een SHA-256.
+The output goes to `dist\`: a folder and a zip with a self-contained `CaptivoxRecorder.exe` (no .NET installation needed), the worker and the helper scripts, plus the installer `CaptivoxRecorder-<version>-setup.exe`, each with a SHA-256 checksum.
 
-| Map | Inhoud |
+| Folder | Contents |
 | --- | --- |
-| `src\CaptivoxRecorder` | de recorder (C#, .NET 8, WinForms, [NAudio](https://github.com/naudio/NAudio)) |
-| `workers` | de transcriptieworker (PowerShell en Python) |
-| `tools` | hulpscripts voor de AMD-route (whisper.cpp met Vulkan) |
-| `install-prereqs.ps1` | installeert de transcriptie-omgeving |
-| `installer` | het installatieprogramma (Inno Setup) |
+| `src\CaptivoxRecorder` | the recorder (C#, .NET 8, WinForms, [NAudio](https://github.com/naudio/NAudio)) |
+| `workers` | the transcription worker (PowerShell and Python) |
+| `tools` | optional helper scripts to build and test whisper.cpp with Vulkan yourself (not needed for the fast AMD route) |
+| `install-prereqs.ps1` | sets up the transcription runtime (the installer runs it for you) |
+| `installer` | the installer (Inno Setup) |
 
-## Bekende beperkingen
+## Known limitations
 
-- De oudere schermen (uitgebreide instellingen en bibliotheek) staan nog onder *Instellingen*, *Geavanceerd*.
-- Alleen Windows; de interface is Nederlands.
-- Het programma is niet digitaal ondertekend en werkt zichzelf niet bij. Nieuwe versies verschijnen onder Releases.
-- Een opname kan ongeveer 3 uur duren (de grens van een WAV-bestand bij 48 kHz stereo). Captivox waarschuwt een kwartier van tevoren; start daarna een nieuwe opname.
-- Kies je tijdens een opname een ander geluidsapparaat in Windows, dan neemt Captivox nog het oude op. Kies het juiste apparaat voor je start.
-- De gratis versie zet niet in de tekst wie wat zei (geen sprekerherkenning).
+- The older screens (extended settings and the library) are still available under *Settings*, *Advanced*.
+- Windows only.
+- Device names and Windows dialogs (such as the folder picker) appear in the language of Windows.
+- The app is not digitally signed and does not update itself. New versions are published under Releases.
+- A single recording can last about 3 hours (the size limit of a WAV file at 48 kHz stereo). Captivox warns you 15 minutes before; after that, start a new recording.
+- If you switch to a different audio device in Windows during a recording, Captivox keeps recording the old one. Choose the right device before you start.
+- The free version does not mark who said what in the transcript (no speaker recognition).
 
-## Vragen, fouten en ideeen
+## Captivox Pro
 
-Gebruik [Issues](https://github.com/rgerr/captivox-recorder/issues). Zet er geen opnames, transcripten of andere gevoelige gegevens in. Een beveiligingsprobleem meld je niet in een issue; zie [SECURITY.md](SECURITY.md).
+A paid edition, Captivox Pro, is in the works for people who want to get more out of their meetings. It follows the same principles: everything runs on your own PC, and privacy comes first. Planned features:
 
-## Licentie
+- Speaker recognition (who said what), and giving speakers their names.
+- Meeting minutes and summaries, generated on your own PC, with decisions and action items that you review and confirm, each backed by the exact quote from the conversation.
+- An action list, and Outlook tasks for confirmed actions.
+- A link with your Outlook calendar, and help preparing for upcoming meetings.
+- Organisations kept strictly separate, with encrypted storage.
+
+Captivox Pro is not available yet; it is coming soon. You can find the Captivox Pro page in the app.
+
+## Questions, bugs and ideas
+
+Please use [Issues](https://github.com/rgerr/captivox-recorder/issues). Don't include recordings, transcripts or any other sensitive information. Security problems should not be reported in an issue; see [SECURITY.md](SECURITY.md) for how to report them privately.
+
+## Licence
 
 Copyright (c) 2026 rgerr.
 
-Captivox Recorder is vrije software: je mag hem gebruiken, bestuderen, aanpassen en verspreiden onder de voorwaarden van de [GNU General Public License versie 3](LICENSE) of (naar keuze) een latere versie. De software komt **zonder enige garantie**.
+Captivox Recorder is free software: you can use, study, modify and share it under the terms of the [GNU General Public License version 3](LICENSE) or (at your option) any later version. It comes **without any warranty**.
 
-De onderdelen van anderen die Captivox gebruikt, staan met hun licenties in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+The third-party components Captivox uses are listed with their licences in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-## In English
+---
 
-Captivox Recorder is a free (GPL-3.0) Windows app that records your microphone and your PC's audio at the same time (for Teams, Zoom, Meet or any other call), and transcribes the conversation **locally** with WhisperX (no speaker diarization in the free version). Nothing is sent to the cloud; no account and no telemetry. The user interface is in Dutch.
-
-Quick start: download `CaptivoxRecorder-2.0.0-setup.exe` from Releases and run it (no admin rights needed); keep *Transcriptie-omgeving nu installeren* checked at the end to set up the transcription runtime (Python 3.10, WhisperX, FFmpeg). A portable zip is available as well. Build from source with the .NET 8 SDK and Inno Setup 6: `.\build.ps1`.
+Nederlandstalig? Kies Nederlands bij de installatie of onder *Settings*, *General*; vragen mogen ook in het Nederlands.

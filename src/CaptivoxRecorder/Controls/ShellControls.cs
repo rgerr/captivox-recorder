@@ -64,7 +64,8 @@ internal enum ShellIcon
     Clock,
     Check,
     Microphone,
-    Speaker
+    Speaker,
+    Star
 }
 
 // Eenvoudige lijnpictogrammen (24 x 24 raster), geschaald naar het vak.
@@ -149,6 +150,20 @@ internal static class ShellIconPainter
                 g.DrawLines(pen, new[] { new PointF(4, 9), new PointF(8, 9), new PointF(13, 5), new PointF(13, 19), new PointF(8, 15), new PointF(4, 15), new PointF(4, 9) });
                 g.DrawArc(pen, 13, 9, 6, 6, -60, 120);
                 break;
+            case ShellIcon.Star:
+                {
+                    // Vijfpuntige ster: om en om een buitenpunt (straal 9) en een binnenpunt (straal 4), vanaf boven.
+                    var points = new PointF[10];
+                    for (var i = 0; i < 10; i++)
+                    {
+                        var radius = i % 2 == 0 ? 9.5f : 4.2f;
+                        var angle = (-90 + i * 36) * Math.PI / 180;
+                        points[i] = new PointF(12 + (float)(radius * Math.Cos(angle)), 12.5f + (float)(radius * Math.Sin(angle)));
+                    }
+
+                    g.DrawPolygon(pen, points);
+                    break;
+                }
         }
 
         g.Restore(state);
@@ -240,7 +255,7 @@ internal sealed class ShellNavButton : Button
             }
 
             _count = value;
-            AccessibleName = _count > 0 && CountLabel.Length > 0 ? $"{Text}, {_count}{(CountCapped ? " of meer" : string.Empty)} {CountLabel}" : Text;
+            AccessibleName = _count > 0 && CountLabel.Length > 0 ? $"{Text}, {_count}{(CountCapped ? " " + UiText.T("of meer") : string.Empty)} {UiText.T(CountLabel)}" : Text;
             Invalidate();
         }
     }
@@ -365,7 +380,8 @@ internal sealed class ShellPill : ShellRowLabel
     {
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
         AutoSize = true;
-        AccessibleDescription = "skip-ui-localization";
+        // Een organisatie of status die al in de goede taal is: niet vertalen.
+        AccessibleDescription = UiTextBinder.RawTextMarker;
         Font = PillFont;
         Padding = new Padding(8, 2, 8, 2);
         Margin = new Padding(0, 2, 6, 2);

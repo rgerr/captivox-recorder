@@ -77,7 +77,7 @@ internal static class AudioDeviceRiskAnalyzer
         }
 
         return normalized.Contains("speakerphone", StringComparison.OrdinalIgnoreCase)
-               || normalized.Contains("telefoon met luidspreker", StringComparison.OrdinalIgnoreCase)
+               || normalized.Contains("telefoon met luidspreker", StringComparison.OrdinalIgnoreCase) // geen vertaling
                || normalized.Contains("echo onderdrukkende", StringComparison.OrdinalIgnoreCase);
     }
 }

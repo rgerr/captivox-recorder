@@ -14,11 +14,12 @@ internal static partial class Program
     {
         if (!OperatingSystem.IsWindows())
         {
-            MessageBox.Show("This recorder only supports Windows.", Branding.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show("This recorder only supports Windows.", Branding.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error); // geen vertaling
             return;
         }
 
         var launchMinimized = args.Any(x => string.Equals(x, "--minimized", StringComparison.OrdinalIgnoreCase));
+        args = WaitForPreviousInstance(args);
         if (TryHandleCommandLine(args.Where(x => !string.Equals(x, "--minimized", StringComparison.OrdinalIgnoreCase)).ToArray()))
         {
             return;
@@ -52,7 +53,7 @@ internal static partial class Program
         Application.ThreadException += (_, args) =>
         {
             AppRuntime.LogException("UI thread exception", args.Exception);
-            MessageBox.Show($"Er is een onverwachte fout opgetreden. Zie logbestand in:{Environment.NewLine}{AppRuntime.GetLogDirectory()}", "Onverwachte fout", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(UiText.F("Er is een onverwachte fout opgetreden. Zie logbestand in:{0}", Environment.NewLine + AppRuntime.GetLogDirectory()), UiText.T("Onverwachte fout"), MessageBoxButtons.OK, MessageBoxIcon.Error);
         };
 
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
@@ -72,16 +73,29 @@ internal static partial class Program
         AppDomain.CurrentDomain.ProcessExit += (_, _) =>
         {
             AppRuntime.LogMessage("ProcessExit ontvangen. Controle op actieve opname gestart.");
-            AppRuntime.TryMarkActiveRecordingInterrupted("Proces beëindigd tijdens actieve opname");
+            AppRuntime.TryMarkActiveRecordingInterrupted("Proces beëindigd tijdens actieve opname"); // geen vertaling
         };
 
         Application.ApplicationExit += (_, _) =>
         {
             AppRuntime.LogMessage("ApplicationExit ontvangen. Controle op actieve opname gestart.");
-            AppRuntime.TryMarkActiveRecordingInterrupted("Applicatie afgesloten tijdens actieve opname");
+            AppRuntime.TryMarkActiveRecordingInterrupted("Applicatie afgesloten tijdens actieve opname"); // geen vertaling
         };
 
         ApplicationConfiguration.Initialize();
+        // De taal van de interface, een keer bij het starten (een andere keuze geldt vanaf de volgende start).
+        try
+        {
+            UiText.SetLanguage(SettingsStore.Load().Ui.InterfaceLanguage);
+        }
+        catch (Exception ex)
+        {
+            AppRuntime.LogException("Taal van de interface lezen mislukt; Engels gebruikt", ex);
+            UiText.SetLanguage(UiText.DefaultLanguage);
+        }
+
+        Thread.CurrentThread.CurrentUICulture = UiText.Culture;
+        Application.Idle += (_, _) => UiTextBinder.AttachOpenForms();
         WindowsToastNotificationService.Initialize();
 
         try
@@ -97,8 +111,35 @@ internal static partial class Program
         catch (Exception ex)
         {
             AppRuntime.LogException("MainForm startup failed", ex);
-            MessageBox.Show($"Captivox Recorder kon niet starten. Zie logbestand in:{Environment.NewLine}{AppRuntime.GetLogDirectory()}{Environment.NewLine}{Environment.NewLine}{ex.Message}", Branding.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(UiText.F("{0} kon niet starten. Zie logbestand in:{1}", Branding.DisplayName, Environment.NewLine + AppRuntime.GetLogDirectory()) + Environment.NewLine + Environment.NewLine + ex.Message, Branding.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
+    }
+
+    // Opnieuw starten vanuit Captivox zelf (bijvoorbeeld na een andere taal): "--wait-for-pid <id>" wacht tot het vorige
+    // exemplaar is afgesloten (hooguit 30 seconden), zodat dit exemplaar daarna gewoon de enige recorder wordt.
+    public const string WaitForPidArgument = "--wait-for-pid";
+
+    private static string[] WaitForPreviousInstance(string[] args)
+    {
+        var index = Array.FindIndex(args, x => string.Equals(x, WaitForPidArgument, StringComparison.OrdinalIgnoreCase));
+        if (index < 0) return args;
+        if (index + 1 < args.Length && int.TryParse(args[index + 1], out var pid) && pid > 0 && pid != Environment.ProcessId)
+        {
+            try
+            {
+                using var previous = System.Diagnostics.Process.GetProcessById(pid);
+                previous.WaitForExit(30000);
+            }
+            catch (ArgumentException)
+            {
+                // Al afgesloten.
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        }
+
+        return args.Where((_, i) => i != index && i != index + 1).ToArray();
     }
 
     // Geeft alleen een guard terug als het eerste exemplaar intussen gestopt bleek; dan start dit exemplaar gewoon.
@@ -129,10 +170,19 @@ internal static partial class Program
         // Geen advies om het proces meteen te stoppen: een recorder die even bezig is, kan midden in een opname zitten.
         AppRuntime.LogMessage($"Tweede recorderstart: het draaiende exemplaar reageerde niet binnen 10 s ({result}); dit exemplaar stopt.");
         ApplicationConfiguration.Initialize();
+        try
+        {
+            UiText.SetLanguage(SettingsStore.Load().Ui.InterfaceLanguage);
+        }
+        catch (Exception ex)
+        {
+            AppRuntime.LogException("Taal van de interface lezen mislukt", ex);
+        }
+
         MessageBox.Show(
-            "Captivox Recorder draait al, maar reageerde niet binnen 10 seconden. Mogelijk is hij nog aan het opstarten of druk bezig. Probeer het over een minuut opnieuw."
+            UiText.F("{0} draait al, maar reageerde niet binnen 10 seconden. Mogelijk is hij nog aan het opstarten of druk bezig. Probeer het over een minuut opnieuw.", Branding.DisplayName)
                 + Environment.NewLine + Environment.NewLine
-                + "Blijft dit gebeuren, controleer dan eerst of er een opname loopt voordat je het bestaande proces via Taakbeheer stopt.",
+                + UiText.T("Blijft dit gebeuren, controleer dan eerst of er een opname loopt voordat je het bestaande proces via Taakbeheer stopt."),
             Branding.DisplayName,
             MessageBoxButtons.OK,
             MessageBoxIcon.Warning);

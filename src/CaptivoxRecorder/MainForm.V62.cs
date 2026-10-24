@@ -268,9 +268,34 @@ public sealed partial class MainForm
         }
         var sessionDirectory = manifest.OutputDirectory;
         var transcriptPath = ResolveTranscriptPath(manifest.TranscriptTextPath, manifest.TranscriptJsonPath, sessionDirectory);
-        var shown = WindowsToastNotificationService.TryShowTranscriptReady(manifest.MeetingId, transcriptPath, sessionDirectory);
+        var name = MeetingDisplayName(manifest, sessionDirectory);
+        var shown = WindowsToastNotificationService.TryShowTranscriptReady(name, transcriptPath, sessionDirectory);
         // Ook in de lokale geschiedenis (pagina Meldingen); de ballon bij het systeemvak alleen als de Windows-melding niet lukte.
-        _ = _notificationDispatcher.NotifyAsync(NotificationEventType.TranscriptReady, "Transcript gereed", $"Transcript voor {manifest.MeetingId} is aangemaakt.", ToolTipIcon.Info, includeWindows: !shown);
+        _ = _notificationDispatcher.NotifyAsync(NotificationEventType.TranscriptReady, "Transcript gereed", UiText.F("Transcript voor {0} is aangemaakt.", name), ToolTipIcon.Info, includeWindows: !shown);
+    }
+
+    // De naam waaronder de gebruiker het overleg kent: de gegeven titel, anders de naam van het geimporteerde bestand,
+    // anders "opname van <tijd>". Nooit de mapnaam.
+    private static string MeetingDisplayName(SessionManifest manifest, string? sessionDirectory)
+    {
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(sessionDirectory)
+                && LibrarySessionMetadataService.Load(sessionDirectory).DisplayTitle is { Length: > 0 } title)
+            {
+                return title;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        {
+        }
+
+        if (!string.IsNullOrWhiteSpace(manifest.SourceFileName))
+        {
+            return Path.GetFileNameWithoutExtension(manifest.SourceFileName.Trim());
+        }
+
+        return UiText.F("opname van {0}", manifest.CreatedAt.ToLocalTime().ToString("HH:mm", UiText.Culture));
     }
     private static string? ResolveTranscriptPath(string? transcriptTextPath, string? transcriptJsonPath, string? sessionDirectory)
     {
@@ -387,9 +412,9 @@ public sealed partial class MainForm
         }
         using var dialog = new SaveFileDialog
         {
-            Title = "Uitgeschreven tekst opslaan",
+            Title = UiText.T("Uitgeschreven tekst opslaan"),
             FileName = string.Join("-", GetLibraryDisplayTitle(entry).Split(Path.GetInvalidFileNameChars())) + ".txt",
-            Filter = "Tekstbestand (*.txt)|*.txt",
+            Filter = UiText.T("Tekstbestand (*.txt)|*.txt"),
             AddExtension = true,
             OverwritePrompt = true,
         };
@@ -539,8 +564,8 @@ public sealed partial class MainForm
     {
         using var dialog = new OpenFileDialog
         {
-            Title = "Audio of opname importeren",
-            Filter = "Ondersteunde bestanden|*.m4a;*.mp3;*.wav;*.mp4;*.m4v;*.aac|Alle bestanden|*.*",
+            Title = UiText.T("Audio of opname importeren"),
+            Filter = UiText.T("Ondersteunde bestanden|*.m4a;*.mp3;*.wav;*.mp4;*.m4v;*.aac|Alle bestanden|*.*"),
             Multiselect = false,
             CheckFileExists = true,
         };
@@ -588,7 +613,7 @@ public sealed partial class MainForm
         StyleButton(cancelButton, Color.FromArgb(230, 236, 242), Color.FromArgb(220, 228, 236), Color.FromArgb(39, 46, 56));
         addButton.Click += (_, _) =>
         {
-            using var browser = new FolderBrowserDialog { Description = "Kies een watch folder" };
+            using var browser = new FolderBrowserDialog { Description = UiText.T("Kies een watch folder") };
             if (browser.ShowDialog(dialog) == DialogResult.OK && !string.IsNullOrWhiteSpace(browser.SelectedPath))
             {
                 if (!listBox.Items.Contains(browser.SelectedPath))
@@ -681,7 +706,7 @@ public sealed partial class MainForm
         StyleButton(cancelButton, Color.FromArgb(230, 236, 242), Color.FromArgb(220, 228, 236), Color.FromArgb(39, 46, 56));
         importButton.Click += (_, _) =>
         {
-            using var openDialog = new OpenFileDialog { Filter = "Tekstbestanden (*.txt;*.md)|*.txt;*.md|Alle bestanden|*.*", CheckFileExists = true };
+            using var openDialog = new OpenFileDialog { Filter = UiText.T("Tekstbestanden (*.txt;*.md)|*.txt;*.md|Alle bestanden|*.*"), CheckFileExists = true };
             if (openDialog.ShowDialog(dialog) == DialogResult.OK)
             {
                 box.Text = File.ReadAllText(openDialog.FileName, Encoding.UTF8);
@@ -689,7 +714,7 @@ public sealed partial class MainForm
         };
         exportButton.Click += (_, _) =>
         {
-            using var saveDialog = new SaveFileDialog { Filter = "Tekstbestand (*.txt)|*.txt", FileName = "captivox_custom_vocabulary.txt", AddExtension = true, OverwritePrompt = true };
+            using var saveDialog = new SaveFileDialog { Filter = UiText.T("Tekstbestand (*.txt)|*.txt"), FileName = "captivox_custom_vocabulary.txt", AddExtension = true, OverwritePrompt = true };
             if (saveDialog.ShowDialog(dialog) == DialogResult.OK)
             {
                 File.WriteAllText(saveDialog.FileName, box.Text, Encoding.UTF8);

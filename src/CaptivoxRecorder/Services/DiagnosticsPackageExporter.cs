@@ -159,6 +159,7 @@ internal static class DiagnosticsPackageExporter
             {
                 Ui = new UiSettings
                 {
+                    InterfaceLanguage = settings.Ui.InterfaceLanguage,
                     OutputRoot = settings.Ui.OutputRoot,
                     PreferredMicDeviceId = settings.Ui.PreferredMicDeviceId,
                     PreferredSystemDeviceId = settings.Ui.PreferredSystemDeviceId,
@@ -176,6 +177,7 @@ internal static class DiagnosticsPackageExporter
                     RuntimeMode = settings.Worker.RuntimeMode,
                     PythonExe = settings.Worker.PythonExe,
                     WhisperXModel = settings.Worker.WhisperXModel,
+                    CpuWhisperXModel = settings.Worker.CpuWhisperXModel,
                     TranscriptionProfile = settings.Worker.TranscriptionProfile,
                     WhisperCppExe = settings.Worker.WhisperCppExe,
                     WhisperCppModelPath = settings.Worker.WhisperCppModelPath,
@@ -244,7 +246,7 @@ internal static class DiagnosticsPackageExporter
             File.WriteAllText(Path.Combine(tempRoot, "worker_profile_summary.txt"), RedactSecrets(WorkerProductionProfile.BuildSummary(redactedSettings)), Encoding.UTF8);
             var editionSnapshot = new EditionService().GetEditionState(attemptRevalidation: false);
             File.WriteAllText(Path.Combine(tempRoot, "product_line_status.redacted.json"), RedactSecrets(LicenseCacheStore.CreateRedactedSnapshotJson(editionSnapshot)), Encoding.UTF8);
-            File.WriteAllText(Path.Combine(tempRoot, "README_diagnostics.txt"), "Dit diagnosepakket van Captivox Recorder bevat standaard alleen geredigeerde sessie- en supportartefacten, de bijbehorende daglogs, de laatst bewaarde worker-self-testartefacten, de actuele worker- en retention-snapshots, een worker-profieloverzicht, een geredigeerde productlijnsnapshot en een preflightoverzicht. Audio wordt niet standaard meegeleverd. Gevoelige waarden zoals e-mailadressen, tokens, bearer-achtige sleutels en expliciete user-profielpaden horen geredigeerd te zijn. Deel dit pakket alleen met beheerders of ontwikkelaars die deze gegevens mogen inzien.", Encoding.UTF8);
+            File.WriteAllText(Path.Combine(tempRoot, "README_diagnostics.txt"), "Dit diagnosepakket van Captivox Recorder bevat standaard alleen geredigeerde sessie- en supportartefacten, de bijbehorende daglogs, de laatst bewaarde worker-self-testartefacten, de actuele worker- en retention-snapshots, een worker-profieloverzicht, een geredigeerde productlijnsnapshot en een preflightoverzicht. Audio wordt niet standaard meegeleverd. Gevoelige waarden zoals e-mailadressen, tokens, bearer-achtige sleutels en expliciete user-profielpaden horen geredigeerd te zijn. Deel dit pakket alleen met beheerders of ontwikkelaars die deze gegevens mogen inzien.", Encoding.UTF8); // geen vertaling
 
             if (warnings.Count > 0)
             {

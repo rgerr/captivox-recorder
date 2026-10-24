@@ -5,10 +5,9 @@ namespace LocalCaptureAgent.Services;
 
 // De lijst op de pagina Overleggen. Een regel per opgenomen of geimporteerd overleg met de stand in gewone taal
 // (opname loopt, wordt uitgeschreven, wacht op jou, klaar, ...). Bron: dezelfde scan als de oude bibliotheek. Alleen lezen.
+// De teksten van een regel zijn meteen in de taal van de interface (de lijst tekent ze zelf).
 internal static class MeetingListService
 {
-    private static readonly CultureInfo Dutch = CultureInfo.GetCultureInfo("nl-NL");
-
     // Kind: rec (rood, loopt), bad (rood), busy (blauw), wait (oranje, wacht op jou), ok (groen).
     internal sealed record MeetingRow(TranscriptLibraryEntry Entry, string Title, DateTime When, string WhenText, string Organization, string StatusText, string StatusKind, bool Waiting, int OpenItems)
     {
@@ -31,7 +30,7 @@ internal static class MeetingListService
             var (text, kind) = Describe(entry.Status, entry.TranscriptionStatus, active, readyMarker, claimMarker);
             var waiting = kind == "bad" && !string.Equals((entry.Status ?? string.Empty).Trim(), "recording", StringComparison.OrdinalIgnoreCase)
                 && File.Exists(Path.Combine(entry.DirectoryPath, "audio_mix.wav"));
-            rows.Add(new MeetingRow(entry, Title(entry), when, WhenText(entry, when, now), string.Empty, text, kind, waiting, 0));
+            rows.Add(new MeetingRow(entry, Title(entry), when, WhenText(entry, when, now), string.Empty, UiText.T(text), kind, waiting, 0));
         }
 
         return rows.OrderByDescending(r => r.When).ToList();
@@ -79,16 +78,17 @@ internal static class MeetingListService
             : entry.MeetingId;
         // De mapnaam als titel ("meeting-<datum>-<tijd>") zegt de gebruiker niets.
         return title.Length == 0 || title.StartsWith("meeting-20", StringComparison.OrdinalIgnoreCase) || string.Equals(title, entry.MeetingId, StringComparison.OrdinalIgnoreCase)
-            ? "Opname zonder titel"
+            ? UiText.T("Opname zonder titel")
             : title;
     }
 
     // "vandaag 10:00 - 58 min", "vr 2 okt - 45 min".
     internal static string WhenText(TranscriptLibraryEntry entry, DateTime when, DateTime now)
     {
-        var day = when.Date == now.Date ? "vandaag " + when.ToString("HH:mm", Dutch)
-            : when.Date == now.Date.AddDays(-1) ? "gisteren " + when.ToString("HH:mm", Dutch)
-            : when.Year == now.Year ? when.ToString("ddd d MMM", Dutch) : when.ToString("d MMM yyyy", Dutch);
+        var culture = UiText.Culture;
+        var day = when.Date == now.Date ? UiText.F("vandaag {0}", when.ToString("HH:mm", culture))
+            : when.Date == now.Date.AddDays(-1) ? UiText.F("gisteren {0}", when.ToString("HH:mm", culture))
+            : when.Year == now.Year ? when.ToString(UiText.ShortDayMonthFormat, culture) : when.ToString(UiText.DayMonthYearFormat, culture);
         var duration = Duration(entry);
         return duration.Length > 0 ? day + "  -  " + duration : day;
     }
@@ -98,7 +98,9 @@ internal static class MeetingListService
         var seconds = entry.DurationSeconds ?? (entry.FinishedAt is { } end && end > entry.CreatedAt ? (end - entry.CreatedAt).TotalSeconds : 0);
         if (seconds < 60) return string.Empty;
         var minutes = (int)Math.Round(seconds / 60);
-        return minutes < 60 ? $"{minutes} min" : $"{minutes / 60} uur{(minutes % 60 > 0 ? $" {minutes % 60} min" : string.Empty)}";
+        return minutes < 60 ? UiText.F("{0} min", minutes)
+            : minutes % 60 > 0 ? UiText.F("{0} uur {1} min", minutes / 60, minutes % 60)
+            : UiText.F("{0} uur", minutes / 60);
     }
 
     private static bool SameDirectory(string a, string b)

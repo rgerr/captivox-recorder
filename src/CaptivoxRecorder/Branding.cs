@@ -10,7 +10,7 @@ internal static class Branding
     // Captivox-installaties op dezelfde pc nooit bij elkaars opnames, instellingen of processen.
     public const bool IsPro = false;
     public const string EditionName = "Gratis";
-    public const string DisplayName = "Captivox Recorder";
+    public const string DisplayName = "Captivox Recorder"; // geen vertaling
     public const string DiagnosticsPrefix = "CaptivoxRecorderFree";
     public const string ExecutableBaseName = "CaptivoxRecorder";
     public const string AppDataFolder = "CaptivoxRecorderFree";
@@ -24,10 +24,10 @@ internal static class Branding
     // Standaardmappen in het gebruikersprofiel, per smaak eigen, zodat een nieuwe installatie nooit in de opnamemap
     // van een andere Captivox gaat zoeken of schrijven.
     public static readonly string DefaultStorageBase = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Captivox");
-    public static readonly string DefaultRecordingsRoot = Path.Combine(DefaultStorageBase, "Opnames");
+    public static readonly string DefaultRecordingsRoot = Path.Combine(DefaultStorageBase, "Opnames"); // geen vertaling
     public static readonly string DefaultExportsRoot = Path.Combine(DefaultStorageBase, "Exports");
 
-    private const string IconResourceName = "LocalCaptureAgent.Assets.captivox-recorder.ico";
+    private const string IconResourceName = "LocalCaptureAgent.Assets.captivox-recorder.ico"; // geen vertaling
     private const string BannerResourceName = "LocalCaptureAgent.Assets.captivox-banner.png";
     private const string LogoResourceName = "LocalCaptureAgent.Assets.captivox-logo.png";
 

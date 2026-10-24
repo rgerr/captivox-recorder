@@ -47,11 +47,12 @@ public sealed partial class MainForm
 
         var mic = Device(microphone, new[] { "Microfoon", "Microphone", "Headset" });
         var sys = Device(others, new[] { "Luidspreker", "Speaker", "Hoofdtelefoon", "Koptelefoon", "Headphone", "Headset" });
+        // Meteen in de taal van de interface: de breedte van de vertaalde tekst bepaalt welke variant past.
         return new[]
         {
-            $"Microfoon: {microphone}  |  Geluid van anderen: {others}",
-            $"Microfoon: {mic}  |  Geluid van anderen: {sys}",
-            string.Equals(mic, sys, StringComparison.OrdinalIgnoreCase) ? $"Microfoon en geluid: {mic}" : $"Microfoon: {mic}  |  Anderen: {sys}",
+            UiText.F("Microfoon: {0}  |  Geluid van anderen: {1}", microphone, others),
+            UiText.F("Microfoon: {0}  |  Geluid van anderen: {1}", mic, sys),
+            string.Equals(mic, sys, StringComparison.OrdinalIgnoreCase) ? UiText.F("Microfoon en geluid: {0}", mic) : UiText.F("Microfoon: {0}  |  Anderen: {1}", mic, sys),
         }.Distinct(StringComparer.Ordinal).ToArray();
     }
 
@@ -110,7 +111,7 @@ public sealed partial class MainForm
     private FlowLayoutPanel? _recordingPageSystemActions;
     private string _shellTrayStateKey = string.Empty;
     private readonly Dictionary<string, Icon> _shellTrayIcons = new(StringComparer.Ordinal);
-    private readonly ToolStripMenuItem _trayWaitingItem = new("Niets wacht op je") { Visible = false, AccessibleDescription = "skip-ui-localization" };
+    private readonly ToolStripMenuItem _trayWaitingItem = new("Niets wacht op je") { Visible = false };
     private bool _shellWasRecording;
     private bool _shellWasBusy;
 
@@ -169,13 +170,13 @@ public sealed partial class MainForm
             Margin = new Padding(0),
         };
         _shellStatusDot = new ShellDot { DotColor = ShellPalette.Ok, Size = new Size(14, 14), Margin = new Padding(0, 5, 10, 0) };
-        _shellStatusTitle = new Label { AutoSize = true, Text = "Klaar om op te nemen", Font = new Font("Segoe UI", 10.5F, FontStyle.Bold, GraphicsUnit.Point), ForeColor = ShellPalette.Text, Margin = new Padding(0, 2, 12, 0), BackColor = Color.Transparent, AccessibleDescription = "skip-ui-localization" };
-        _shellTimerLabel = new Label { AutoSize = true, Text = string.Empty, Visible = false, Font = new Font("Consolas", 13F, FontStyle.Bold, GraphicsUnit.Point), ForeColor = ShellPalette.Text, Margin = new Padding(0, 0, 12, 0), BackColor = Color.Transparent, Cursor = Cursors.Hand, AccessibleDescription = "skip-ui-localization" };
+        _shellStatusTitle = new Label { AutoSize = true, Text = "Klaar om op te nemen", Font = new Font("Segoe UI", 10.5F, FontStyle.Bold, GraphicsUnit.Point), ForeColor = ShellPalette.Text, Margin = new Padding(0, 2, 12, 0), BackColor = Color.Transparent };
+        _shellTimerLabel = new Label { AutoSize = true, Text = string.Empty, Visible = false, Font = new Font("Consolas", 13F, FontStyle.Bold, GraphicsUnit.Point), ForeColor = ShellPalette.Text, Margin = new Padding(0, 0, 12, 0), BackColor = Color.Transparent, Cursor = Cursors.Hand };
         _shellTimerLabel.Click += (_, _) =>
         {
             if (MayLeaveCurrentPage()) NavigateShell("opname");
         };
-        _shellStatusDetail = new Label { AutoSize = true, Text = string.Empty, Font = new Font("Segoe UI", 9.5F, FontStyle.Regular, GraphicsUnit.Point), ForeColor = ShellPalette.TextSecondary, Margin = new Padding(0, 3, 0, 0), BackColor = Color.Transparent, AutoEllipsis = true, MaximumSize = new Size(LogicalToDeviceUnits(560), 0), AccessibleDescription = "skip-ui-localization" };
+        _shellStatusDetail = new Label { AutoSize = true, Text = string.Empty, Font = new Font("Segoe UI", 9.5F, FontStyle.Regular, GraphicsUnit.Point), ForeColor = ShellPalette.TextSecondary, Margin = new Padding(0, 3, 0, 0), BackColor = Color.Transparent, AutoEllipsis = true, MaximumSize = new Size(LogicalToDeviceUnits(560), 0) };
         // Zonder gekozen apparaten: een klik op de stand (stip, kop of toelichting) gaat naar Instellingen, Opnemen.
         foreach (Control part in new Control[] { _shellStatusDot, _shellStatusTitle, _shellStatusDetail })
         {
@@ -208,11 +209,14 @@ public sealed partial class MainForm
         {
             if (MayLeaveCurrentPage()) NavigateShell(ShellNavNotifications);
         };
-        _toolTip.SetToolTip(_shellBellButton, "Meldingen");
+        SetUiToolTip(_shellBellButton, "Meldingen");
         layout.Controls.Add(_shellBellButton, 3, 0);
 
         _recordToggleButton.Margin = new Padding(0);
-        _recordToggleButton.Size = LogicalToDeviceUnits(new Size(200, 44));
+        // Breed genoeg voor de langste tekst (starten of stoppen) in de taal van de interface; Frans en Duits zijn langer.
+        var recordTextWidth = new[] { "Opname starten", "Opname stoppen" }
+            .Max(caption => TextRenderer.MeasureText(UiText.T(caption), _recordToggleButton.Font).Width);
+        _recordToggleButton.Size = new Size(Math.Max(LogicalToDeviceUnits(200), recordTextWidth + LogicalToDeviceUnits(84)), LogicalToDeviceUnits(44));
         _recordToggleButton.Anchor = AnchorStyles.Right;
         layout.Controls.Add(_recordToggleButton, 4, 0);
 
@@ -276,7 +280,7 @@ public sealed partial class MainForm
 
         ShellNavButton AddNav(string key, string text, ShellIcon icon)
         {
-            var button = new ShellNavButton { Key = key, Text = text, Icon = icon, Width = LogicalToDeviceUnits(206), AccessibleName = text, AccessibleDescription = "skip-ui-localization" };
+            var button = new ShellNavButton { Key = key, Text = text, Icon = icon, Width = LogicalToDeviceUnits(206), AccessibleName = UiText.T(text) };
             button.Click += (_, _) =>
             {
                 if (!MayLeaveCurrentPage()) return;
@@ -294,6 +298,8 @@ public sealed partial class MainForm
         var spacer = new Panel { Width = LogicalToDeviceUnits(206), Height = 24, BackColor = ShellPalette.Surface, Margin = new Padding(0) };
         nav.Controls.Add(spacer);
         AddNav(ShellNavSettings, "Instellingen", ShellIcon.Sliders);
+        // De gratis versie: een vaste, rustige plek over de betaalde versie, direct onder Instellingen.
+        AddNav(ShellNavProOffer, "Captivox Pro", ShellIcon.Star);
         _shellSystemNavButton = AddNav(ShellNavSystem, "Geen problemen gezien", ShellIcon.None);
         _shellSystemNavButton.DotColor = ShellPalette.Ok;
         _shellSystemNavButton.Font = new Font("Segoe UI", 9.5F, FontStyle.Regular, GraphicsUnit.Point);
@@ -340,7 +346,7 @@ public sealed partial class MainForm
         if (_mainTabs?.SelectedTab is not { } selected) return;
         var key = _shellPages.FirstOrDefault(kv => kv.Value == selected).Key ?? string.Empty;
         // Oude pagina's die (nog) onder een plek vallen.
-        if (key.Length == 0 && selected.Text is "Opnemen") key = ShellNavSettings;
+        if (key.Length == 0 && selected.Text == UiText.T("Opnemen")) key = ShellNavSettings;
         if (key == ShellNavLibrary) key = ShellNavMeetings;
         foreach (var button in _shellNavButtons) button.Selected = button.Key == key;
 
@@ -470,9 +476,11 @@ public sealed partial class MainForm
         _shellStatusDetail.Cursor = pointToSettings ? Cursors.Hand : Cursors.Default;
         _shellStatusDot.Cursor = pointToSettings ? Cursors.Hand : Cursors.Default;
         _shellStatusTitle.ForeColor = _session is not null && !ShellRecordingProblem() && !ShellRecordingWarning() ? Color.FromArgb(143, 29, 18) : ShellPalette.Text;
+        // Vertaald voordat de breedte wordt gemeten (FitShellStatusDetail).
+        detail = UiText.T(detail);
         _shellStatusDetailVariants = deviceVariants;
         _shellStatusDetailFull = detail;
-        _toolTip.SetToolTip(_shellStatusDetail, detail);
+        SetUiToolTip(_shellStatusDetail, detail);
         // Nog geen indeling (heel vroeg bij het opstarten): dan de volledige tekst; de eerste indeling kiest daarna.
         if (!FitShellStatusDetail()) _shellStatusDetail.Text = detail;
         _shellStatusDot.DotColor = dot;
@@ -481,20 +489,26 @@ public sealed partial class MainForm
         UpdateShellTray();
     }
 
+    // De velden _shellHealth* zijn de Nederlandse standen van de bewaking ("Stil (45s)", "Bijna vol (nog 12 min)"); de
+    // tekst hier is meteen in de taal van de interface.
     private string RecordingWarningText()
     {
-        if (_shellHealthOverall.StartsWith("Bijna vol", StringComparison.Ordinal)) return "Het bestand is bijna vol: " + _shellHealthOverall[9..].Trim(' ', '(', ')');
-        if (_shellHealthSystem.StartsWith("Stil", StringComparison.Ordinal) && !SystemSilenceAcknowledged) return "Geen geluid van de anderen " + _shellHealthSystem[4..].Trim();
-        if (_shellHealthMic.StartsWith("Stil", StringComparison.Ordinal)) return "Je microfoon is stil " + _shellHealthMic[4..].Trim();
+        if (_shellHealthOverall.StartsWith("Bijna vol", StringComparison.Ordinal)) return UiText.F("Het bestand is bijna vol: {0}", UiText.T(_shellHealthOverall[9..].Trim(' ', '(', ')')));
+        if (_shellHealthSystem.StartsWith("Stil", StringComparison.Ordinal) && !SystemSilenceAcknowledged) return UiText.F("Geen geluid van de anderen {0}", _shellHealthSystem[4..].Trim());
+        if (_shellHealthMic.StartsWith("Stil", StringComparison.Ordinal)) return UiText.F("Je microfoon is stil {0}", _shellHealthMic[4..].Trim());
         return string.Empty;
     }
 
     // Systeemstatus links onderaan: in orde, of de eerste reden waarom niet.
+    // De Nederlandse brontekst van de systeemstatus: de knop toont de vertaling, de klik kijkt naar de bron.
+    private string _shellSystemStatusSource = string.Empty;
+
     private void SetShellSystemStatus(bool ok, string text)
     {
         if (_shellSystemNavButton is null) return;
-        _shellSystemNavButton.Text = text;
-        _shellSystemNavButton.AccessibleName = text;
+        _shellSystemStatusSource = text;
+        _shellSystemNavButton.Text = UiText.T(text);
+        _shellSystemNavButton.AccessibleName = UiText.T(text);
         _shellSystemNavButton.DotColor = ok ? ShellPalette.Ok : ShellPalette.Wait;
         _shellSystemNavButton.Invalidate();
     }
@@ -508,7 +522,7 @@ public sealed partial class MainForm
         if (ShellRecordingProblem())
         {
             key = "bad";
-            tooltip = "Captivox: probleem met de opname";
+            tooltip = UiText.T("Captivox: probleem met de opname");
         }
         else if (_session is not null)
         {
@@ -523,22 +537,22 @@ public sealed partial class MainForm
             else
             {
                 key = "rec";
-                tooltip = $"Captivox: opname loopt ({minutes} min)";
+                tooltip = UiText.F("Captivox: opname loopt ({0} min)", minutes);
             }
         }
         else if (waiting > 0)
         {
             key = "wait" + Math.Min(waiting, 10).ToString(CultureInfo.InvariantCulture);
-            tooltip = $"Captivox: {waiting} {(waiting == 1 ? "ding wacht" : "dingen wachten")} op je";
+            tooltip = waiting == 1 ? UiText.T("Captivox: 1 ding wacht op je") : UiText.F("Captivox: {0} dingen wachten op je", waiting);
         }
         else
         {
             key = "ok";
-            tooltip = "Captivox: klaar om op te nemen";
+            tooltip = UiText.T("Captivox: klaar om op te nemen");
         }
 
         _trayWaitingItem.Visible = waiting > 0 && _session is null;
-        _trayWaitingItem.Text = waiting == 1 ? "1 ding wacht op je" : $"{waiting} dingen wachten op je";
+        _trayWaitingItem.Text = waiting == 1 ? UiText.T("1 ding wacht op je") : UiText.F("{0} dingen wachten op je", waiting);
         var trimmed = tooltip.Length > 63 ? tooltip[..63] : tooltip;
         if (_notifyIcon.Text != trimmed) _notifyIcon.Text = trimmed;
         if (key == _shellTrayStateKey) return;

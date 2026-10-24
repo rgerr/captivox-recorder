@@ -73,13 +73,13 @@ internal static class WindowsToastNotificationService
             var builder = new ToastContentBuilder()
                 .AddArgument("action", defaultAction)
                 .AddArgument("target", EncodeValue(defaultTarget!))
-                .AddText("Transcript gereed")
-                .AddText($"Sessie {meetingId} is afgerond. Open direct het transcript of de sessiemap.");
+                .AddText(UiText.T("Transcript gereed"))
+                .AddText(UiText.F("Sessie {0} is afgerond. Open direct het transcript of de sessiemap.", meetingId));
 
             if (transcriptExists)
             {
                 builder.AddButton(new ToastButton()
-                    .SetContent("Open transcript")
+                    .SetContent(UiText.T("Open transcript"))
                     .AddArgument("action", "openTranscript")
                     .AddArgument("target", EncodeValue(transcriptPath!))
                     .SetBackgroundActivation());
@@ -88,7 +88,7 @@ internal static class WindowsToastNotificationService
             if (folderExists)
             {
                 builder.AddButton(new ToastButton()
-                    .SetContent("Open map")
+                    .SetContent(UiText.T("Open map"))
                     .AddArgument("action", "openFolder")
                     .AddArgument("target", EncodeValue(sessionDirectory!))
                     .SetBackgroundActivation());

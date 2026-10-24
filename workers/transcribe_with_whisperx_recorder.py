@@ -40,6 +40,127 @@ os.environ.setdefault("TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD", "1")
 os.environ.setdefault("PYANNOTE_METRICS_ENABLED", "0")
 
 
+# ---------- Rustig op de processor ----------
+# Transcriptie mag de pc niet traag maken: dit proces (en FFmpeg, dat het start en de prioriteit erft) draait op
+# "lager dan normaal" en gebruikt een begrensd aantal rekendraden, zodat er altijd processortijd overblijft voor de
+# gebruiker. CAPTIVOX_CPU_THREADS kan het aantal draden overschrijven.
+CPU_THREADS_CAP = 8
+DEFAULT_CPU_WHISPERX_MODEL = "large-v3-turbo"
+BELOW_NORMAL_PRIORITY_CLASS = 0x00004000
+
+
+def resolve_cpu_threads() -> int:
+    raw = (os.environ.get("CAPTIVOX_CPU_THREADS") or "").strip()
+    if raw:
+        try:
+            value = int(raw)
+            if value >= 1:
+                return value
+        except ValueError:
+            pass
+    logical = os.cpu_count() or 1
+    return max(1, min(logical - 2, CPU_THREADS_CAP))
+
+
+CPU_THREADS = resolve_cpu_threads()
+
+
+def lower_process_priority() -> bool:
+    """Zet dit proces op 'lager dan normaal'. Kindprocessen (FFmpeg) erven die prioriteit."""
+    if os.name != "nt":
+        try:
+            os.nice(5)
+            return True
+        except Exception:
+            return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        # Met expliciete typen: zonder argtypes geeft ctypes de handle als 32-bits int door en faalt de aanroep op x64.
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        kernel32.SetPriorityClass.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel32.SetPriorityClass.restype = wintypes.BOOL
+        if kernel32.SetPriorityClass(kernel32.GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS):
+            return True
+        eprint(f"WARN: prioriteit kon niet worden verlaagd (Windows-fout {ctypes.get_last_error()})")
+        return False
+    except Exception as exc:
+        eprint(f"WARN: prioriteit kon niet worden verlaagd: {exc}")
+        return False
+
+
+def configure_cpu_friendliness() -> None:
+    """Lage prioriteit en begrensde draden; moet voor het importeren van numpy/torch gebeuren."""
+    priority_lowered = lower_process_priority()
+    threads = str(CPU_THREADS)
+    for name in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+        os.environ[name] = threads
+    eprint(f"INFO: processorbelasting begrensd: prioriteit={'lager dan normaal' if priority_lowered else 'ongewijzigd'}, draden={CPU_THREADS} (van {os.cpu_count()} logische processors)")
+
+
+def limit_torch_threads(torch_module: Any) -> None:
+    try:
+        torch_module.set_num_threads(CPU_THREADS)
+    except Exception as exc:
+        eprint(f"WARN: torch-draden konden niet worden begrensd: {exc}")
+    try:
+        torch_module.set_num_interop_threads(1)
+    except Exception:
+        # Kan maar een keer en alleen voor het eerste parallelle werk; dan blijft de standaard staan.
+        pass
+
+
+def load_whisperx_model(whisperx_module: Any, model_name: str, device: str, compute_type: str, language: Optional[str]):
+    """whisperx.load_model met het begrensde aantal draden op de processor."""
+    kwargs: Dict[str, Any] = {"compute_type": compute_type, "language": language}
+    if device != "cpu":
+        return whisperx_module.load_model(model_name, device, **kwargs)
+    # whisperx.load_model is een doorgeefluik (*args, **kwargs) naar whisperx.asr.load_model; die heeft "threads"
+    # (standaard 4), dat faster-whisper/CTranslate2 als cpu_threads gebruikt.
+    supports_threads = False
+    try:
+        import inspect
+        import whisperx.asr as whisperx_asr  # type: ignore
+        supports_threads = "threads" in inspect.signature(whisperx_asr.load_model).parameters
+    except Exception:
+        supports_threads = False
+    if supports_threads:
+        kwargs["threads"] = CPU_THREADS
+    return whisperx_module.load_model(model_name, device, **kwargs)
+
+
+def whisper_model_available_locally(model_name: str) -> bool:
+    if not model_name:
+        return False
+    if os.path.isdir(model_name):
+        return True
+    try:
+        from faster_whisper.utils import download_model
+        download_model(model_name, local_files_only=True)
+        return True
+    except Exception:
+        return False
+
+
+def choose_cpu_whisper_model(current_model: str) -> str:
+    """Het model voor de processor: het lichtere CPU-model (standaard large-v3-turbo met int8) in plaats van het
+    videokaartmodel. Staat dat lichtere model nog niet op de pc maar het huidige wel, dan blijft het huidige, zodat een
+    terugval midden in een transcriptie niet eerst gigabytes hoeft te downloaden."""
+    cpu_model = (os.environ.get("CAPTIVOX_WHISPERX_CPU_MODEL") or "").strip()
+    if not cpu_model or cpu_model == current_model:
+        return current_model or cpu_model or DEFAULT_CPU_WHISPERX_MODEL
+    if not current_model or current_model in ("ffmpeg-whisper-gpu", "whispercpp-vulkan"):
+        return cpu_model
+    if whisper_model_available_locally(cpu_model):
+        eprint(f"INFO: processorroute gebruikt het CPU-model {cpu_model} in plaats van {current_model}")
+        return cpu_model
+    if whisper_model_available_locally(current_model):
+        eprint(f"INFO: CPU-model {cpu_model} staat niet op deze pc; {current_model} is wel aanwezig en wordt gebruikt")
+        return current_model
+    return cpu_model
+
+
 def configure_torch_checkpoint_compatibility(torch_module: Any) -> None:
     """Maak pyannote/WhisperX checkpoint loading compatibel met PyTorch 2.6+."""
     try:
@@ -250,6 +371,30 @@ def remove_known_intro_noise(serializable: Dict[str, Any]) -> int:
 
     if removed:
         serializable["segments"] = cleaned
+    return removed
+
+
+# Stukken zonder spraak die een spraakmodel soms in stiltes zet: alleen sterretjes, puntjes of streepjes, of een
+# markering als [BLANK_AUDIO]. Bewust voorzichtig: alleen stukken die uit niets anders bestaan.
+NON_SPEECH_ONLY = re.compile(r"^[\s*.\u2026\u00b7\-_~]*$")
+NON_SPEECH_MARKER = re.compile(r"^[\[(]\s*(blank[_ ]audio|silence|stilte|no speech|music|muziek|applause|applaus)\s*[\])]$", re.IGNORECASE)
+
+
+def is_non_speech_text(text: str) -> bool:
+    value = (text or "").strip()
+    return bool(NON_SPEECH_ONLY.match(value) or NON_SPEECH_MARKER.match(value))
+
+
+def remove_non_speech_segments(serializable: Dict[str, Any]) -> int:
+    segments = serializable.get("segments")
+    if not isinstance(segments, list):
+        return 0
+    kept = [seg for seg in segments if not (isinstance(seg, dict) and is_non_speech_text(str(seg.get("text", "") or "")))]
+    removed = len(segments) - len(kept)
+    if removed:
+        serializable["segments"] = kept
+        serializable["removed_non_speech_segments"] = int(serializable.get("removed_non_speech_segments") or 0) + removed
+        eprint(f"INFO: {removed} stuk(ken) zonder spraak weggelaten (alleen tekens als *** of ..., of [BLANK_AUDIO])")
     return removed
 
 
@@ -631,6 +776,16 @@ def ensure_ffmpeg(ffmpeg_path: str) -> str:
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg -version faalde met exitcode {result.returncode}")
     eprint(f"INFO: ffmpeg OK via {exe}")
+    # WhisperX (whisperx.load_audio) start zelf "ffmpeg" via PATH. De eigen FFmpeg van Captivox staat niet in PATH, dus
+    # zet zijn map vooraan, alleen voor dit proces en zijn kinderen.
+    try:
+        ffmpeg_dir = os.path.dirname(os.path.abspath(exe))
+        current_path = os.environ.get("PATH", "")
+        entries = [entry for entry in current_path.split(os.pathsep) if entry]
+        if not entries or os.path.normcase(os.path.abspath(entries[0])) != os.path.normcase(ffmpeg_dir):
+            os.environ["PATH"] = ffmpeg_dir + (os.pathsep + current_path if current_path else "")
+    except Exception as exc:
+        eprint(f"WARN: map van ffmpeg kon niet aan PATH worden toegevoegd: {exc}")
     return exe
 
 
@@ -945,8 +1100,10 @@ def build_ffmpeg_whisper_command(args, input_path: str, json_destination: str) -
         f"whisper=model={model_value}:language={language}:queue=20:"
         f"use_gpu=true:gpu_device=0:destination={destination_value}:format=json"
     )
+    # Logniveau debug: alleen dan geeft FFmpeg de regels van whisper.cpp door (ggml_vulkan, Vulkan0), waarmee hieronder
+    # het gebruik van de videokaart wordt bevestigd. Op info faalt de bevestiging altijd.
     command = [
-        ffmpeg_exe, "-y", "-nostdin", "-hide_banner", "-loglevel", "info",
+        ffmpeg_exe, "-y", "-nostdin", "-hide_banner", "-loglevel", "debug",
         "-i", input_path, "-vn", "-af", whisper_filter, "-f", "null", "-",
     ]
     return command, runtime_root
@@ -1847,6 +2004,7 @@ def run_self_test(args, hf_token: Optional[str]) -> int:
     try:
         import torch
         configure_torch_checkpoint_compatibility(torch)
+        limit_torch_threads(torch)
         import whisperx
         if args.enable_diarization:
             import pyannote.audio  # noqa: F401
@@ -1860,6 +2018,8 @@ def run_self_test(args, hf_token: Optional[str]) -> int:
     device = runtime["device"]
     compute_type = runtime["compute_type"]
     batch_size = int(runtime["batch_size"])
+    if device == "cpu":
+        args.model = choose_cpu_whisper_model(args.model)
 
     eprint(f"INFO: self-test runtime -> requested_profile={runtime['requested_profile']} active_profile={runtime['active_profile']} device={device} compute_type={compute_type} model={args.model} mode={mode}")
     if runtime.get("gpu_fallback_active"):
@@ -1870,7 +2030,7 @@ def run_self_test(args, hf_token: Optional[str]) -> int:
     try:
         write_test_wav(sample_path)
         mark_phase("model_load_started")
-        model = whisperx.load_model(args.model, device, compute_type=compute_type, language=args.language)
+        model = load_whisperx_model(whisperx, args.model, device, compute_type, args.language)
         mark_phase("model_load_finished")
         audio = whisperx.load_audio(sample_path)
         result = model.transcribe(audio, batch_size=1, language=args.language)
@@ -2013,6 +2173,8 @@ def write_transcript_artifacts(serializable: Dict[str, Any], args) -> None:
     """
     receipt = transcript_receipt_path(args)
     receipt.unlink(missing_ok=True)
+    # In elke route (WhisperX, FFmpeg Whisper, whisper.cpp): stukken zonder spraak niet in de tekst.
+    remove_non_speech_segments(serializable)
     text_output, json_output = build_outputs(serializable, getattr(args, "output_format", "txt+json"))
     srt_output, vtt_output = build_subtitle_outputs(serializable)
     outputs = {}
@@ -2279,6 +2441,7 @@ def main() -> int:
     parser.add_argument("--self-test-mode", default="quick", choices=["quick", "full"], help="Self-test scope: quick or full")
     args = parser.parse_args()
 
+    configure_cpu_friendliness()
     args.enable_diarization = str(args.enable_diarization).strip().lower() in {"1", "true", "yes", "y"}
     args.diarization_acceleration = normalize_diarization_acceleration(args.diarization_acceleration)
     if args.hf_token:
@@ -2365,16 +2528,19 @@ def main() -> int:
             else:
                 eprint(f"WARN: AMD-profiel geselecteerd, maar geen AMD GPU-engine is beschikbaar: ffmpeg={ffmpeg_probe.get('reason') if isinstance(ffmpeg_probe, dict) else 'geen probe'}; whispercpp={whispercpp_probe.get('reason') if isinstance(whispercpp_probe, dict) else 'geen probe'}")
 
-        # Geen AMD-engine beschikbaar of gelukt: WhisperX op de processor met het ingestelde model, niet met de
-        # plaatsnaam van de AMD-route (die kent WhisperX niet).
+        # Geen AMD-engine beschikbaar of gelukt: WhisperX op de processor met het CPU-model (standaard large-v3-turbo),
+        # niet met de plaatsnaam van de AMD-route (die kent WhisperX niet).
         if args.model in ("ffmpeg-whisper-gpu", "whispercpp-vulkan"):
-            args.model = (os.environ.get("CAPTIVOX_WHISPERX_MODEL") or "").strip() or "large-v2"
+            args.model = ((os.environ.get("CAPTIVOX_WHISPERX_CPU_MODEL") or "").strip()
+                          or (os.environ.get("CAPTIVOX_WHISPERX_MODEL") or "").strip()
+                          or DEFAULT_CPU_WHISPERX_MODEL)
             eprint(f"INFO: AMD-route niet gebruikt; WhisperX-model voor de terugval: {args.model}")
         begin_phase("dependency_imports")
         import numpy as np
         import pandas as pd  # noqa: F401
         import torch
         configure_torch_checkpoint_compatibility(torch)
+        limit_torch_threads(torch)
         import whisperx
         if args.enable_diarization:
             from pyannote.audio import Pipeline
@@ -2399,6 +2565,8 @@ def main() -> int:
         gpu_fallback_reason = runtime.get("gpu_fallback_reason")
         runtime_capabilities = runtime.get("capabilities", {})
         runtime_backend_probe = runtime.get("backend_probe", {})
+        if device == "cpu":
+            args.model = choose_cpu_whisper_model(args.model)
         eprint(f"INFO: requested_profile={requested_profile}, active_profile={active_profile}, device={device}, model={args.model}, batch_size={batch_size}, compute_type={compute_type}, diarization={args.enable_diarization}")
         if gpu_fallback_active and gpu_fallback_reason:
             eprint(f"WARN: GPU fallback actief: {gpu_fallback_reason}")
@@ -2431,7 +2599,7 @@ def main() -> int:
         end_phase("audio_load")
         def load_and_transcribe(current_device: str, current_compute_type: str, current_batch_size: int):
             begin_phase("model_load")
-            loaded_model = whisperx.load_model(args.model, current_device, compute_type=current_compute_type, language=args.language)
+            loaded_model = load_whisperx_model(whisperx, args.model, current_device, current_compute_type, args.language)
             end_phase("model_load")
             local_transcribe_kwargs = {"batch_size": current_batch_size, "language": args.language}
             if args.initial_prompt:
@@ -2456,12 +2624,14 @@ def main() -> int:
                 device = "cpu"
                 compute_type = "int8"
                 batch_size = min(batch_size, 2)
+                args.model = choose_cpu_whisper_model(args.model)
                 progress.set_metadata(
                     runtime_device=device,
                     runtime_compute_type=compute_type,
                     active_transcription_profile=active_profile,
                     gpu_fallback_active=True,
-                    gpu_fallback_reason=gpu_fallback_reason)
+                    gpu_fallback_reason=gpu_fallback_reason,
+                    model=args.model)
                 model, result = load_and_transcribe(device, compute_type, batch_size)
             else:
                 raise

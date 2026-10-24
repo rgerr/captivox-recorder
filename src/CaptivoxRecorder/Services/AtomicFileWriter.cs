@@ -8,7 +8,7 @@ internal static class AtomicFileWriter
     {
         if (string.IsNullOrWhiteSpace(path))
         {
-            throw new ArgumentException("Pad voor atomische write ontbreekt.", nameof(path));
+            throw new ArgumentException("Pad voor atomische write ontbreekt.", nameof(path)); // geen vertaling
         }
 
         var directory = Path.GetDirectoryName(path);
@@ -46,7 +46,7 @@ internal static class AtomicFileWriter
     {
         if (string.IsNullOrWhiteSpace(path))
         {
-            throw new ArgumentException("Pad voor atomische write ontbreekt.", nameof(path));
+            throw new ArgumentException("Pad voor atomische write ontbreekt.", nameof(path)); // geen vertaling
         }
 
         var directory = Path.GetDirectoryName(path);

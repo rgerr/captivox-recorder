@@ -1,38 +1,34 @@
-# Beveiliging
+# Security
 
-## Ondersteunde versies
+## Supported versions
 
-Alleen de nieuwste release krijgt beveiligingsfixes.
+Only the latest release receives security fixes.
 
-| Versie | Ondersteund |
+| Version | Supported |
 | --- | --- |
-| 2.0.x | ja |
-| 1.1.x | nee |
-| 1.0.x | nee |
-| 0.9.0-beta1 en ouder | nee |
+| 2.0.x | yes |
+| 1.1.x | no |
+| 1.0.x | no |
+| 0.9.0-beta1 and older | no |
 
-## Een kwetsbaarheid melden
+## Reporting a vulnerability
 
-Meld een kwetsbaarheid **niet** in een openbaar issue. Gebruik de privemelding van GitHub: tab **Security**, knop **Report a vulnerability** in deze repository. Alleen de beheerder ziet je melding.
+Please do **not** report a vulnerability in a public issue. Use GitHub's private reporting instead: the **Security** tab, **Report a vulnerability** button in this repository. Only the maintainer can see your report.
 
-Vermeld de versie, wat je deed, wat er gebeurde en wat de gevolgen kunnen zijn. Stuur geen echte opnames of transcripten mee; een nagebootst voorbeeld is genoeg.
+Include the version, what you did, what happened and what the impact could be. Don't send real recordings or transcripts; a made-up example is enough.
 
-Je krijgt binnen een week een eerste reactie. Een bevestigde kwetsbaarheid wordt in een nieuwe release opgelost en in de [CHANGELOG](CHANGELOG.md) vermeld, met dank aan de melder als die dat wil.
+You will get a first response within a week. A confirmed vulnerability is fixed in a new release and mentioned in the [CHANGELOG](CHANGELOG.md), with credit to the reporter if they wish.
 
-## Waar het om gaat
+## What counts
 
-Bijvoorbeeld:
+For example:
 
-- opnames, transcripten of logboeken die terechtkomen waar ze niet horen, of die anderen op dezelfde pc kunnen lezen;
-- paden, bestandsnamen of instellingen waarmee iemand code kan laten uitvoeren (bijvoorbeeld via de worker of `install-prereqs.ps1`);
-- netwerkverkeer dat er volgens [PRIVACY.md](PRIVACY.md) niet hoort te zijn.
+- recordings, transcripts or logs ending up where they don't belong, or being readable by other users of the same PC;
+- paths, file names or settings that let someone run code (for example through the worker or `install-prereqs.ps1`);
+- network traffic that should not be there according to [PRIVACY.md](PRIVACY.md).
 
-## Ontwerp
+## Design
 
-- Alles draait lokaal onder het eigen Windows-account; beheerdersrechten zijn niet nodig.
-- De recorder start de worker zelf, met `-ExecutionPolicy Bypass` alleen voor dat ene script.
-- Een opname is een gewone map: je kunt altijd zien wat er bewaard is.
-
----
-
-**In English**: please report vulnerabilities privately through GitHub (*Security*, *Report a vulnerability*), not in a public issue, and do not attach real recordings. Only the latest 2.0.x release is supported.
+- Everything runs locally under your own Windows account; no administrator rights are needed.
+- The recorder starts the worker itself, using `-ExecutionPolicy Bypass` only for that one script.
+- A recording is an ordinary folder: you can always see what has been stored.

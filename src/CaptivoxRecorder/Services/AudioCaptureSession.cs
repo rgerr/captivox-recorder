@@ -189,7 +189,7 @@ public sealed class AudioCaptureSession : IDisposable
         EnsureNotDisposed();
         if (_manifest is null || _micCapture is null || _systemCapture is null || _micWriter is null || _systemWriter is null || _micStopped is null || _systemStopped is null)
         {
-            throw new InvalidOperationException("Session is not running.");
+            throw new InvalidOperationException("Session is not running."); // geen vertaling
         }
 
         try
@@ -261,7 +261,7 @@ public sealed class AudioCaptureSession : IDisposable
     {
         if (_manifest is null || _micWriter is null || _systemWriter is null)
         {
-            throw new InvalidOperationException("Session is not running.");
+            throw new InvalidOperationException("Session is not running."); // geen vertaling
         }
 
         _sessionClock.Stop();
@@ -560,7 +560,7 @@ public sealed class AudioCaptureSession : IDisposable
 
         var diagnosticsPath = Path.Combine(_manifest.OutputDirectory, "diagnostics.log");
         var sb = new StringBuilder();
-        sb.AppendLine("Captivox Recorder diagnostics");
+        sb.AppendLine("Captivox Recorder diagnostics"); // geen vertaling
         sb.AppendLine($"Session: {_manifest.MeetingId}");
         sb.AppendLine($"Status: {_manifest.Status}");
         sb.AppendLine($"Output: {_manifest.OutputFile}");

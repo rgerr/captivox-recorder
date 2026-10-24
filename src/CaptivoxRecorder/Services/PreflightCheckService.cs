@@ -12,15 +12,19 @@ internal static class PreflightCheckService
         var lines = new List<string>();
         var warnings = new List<string>();
         var errors = new List<string>();
+        var userWarnings = new List<string>();
+        var userErrors = new List<string>();
 
         if (string.IsNullOrWhiteSpace(micDeviceId))
         {
             errors.Add("Geen microfoon geselecteerd.");
+            userErrors.Add("Er is geen microfoon gekozen. Kies er een onder Instellingen, Opnemen.");
         }
 
         if (string.IsNullOrWhiteSpace(systemDeviceId))
         {
             errors.Add("Geen systeemaudio-device geselecteerd.");
+            userErrors.Add("Er is geen apparaat gekozen voor het geluid van de anderen. Kies er een onder Instellingen, Opnemen.");
         }
 
         if (!string.IsNullOrWhiteSpace(outputRoot))
@@ -34,11 +38,13 @@ internal static class PreflightCheckService
             catch (Exception ex)
             {
                 errors.Add($"Uitvoermap niet bruikbaar: {ex.Message}");
+                userErrors.Add($"Captivox kan niet schrijven in de map voor opnames ({outputRoot}). Kies een andere map onder Instellingen, Opnemen.");
             }
         }
         else
         {
             errors.Add("Uitvoermap ontbreekt.");
+            userErrors.Add("Er is geen map voor de opnames ingesteld. Kies er een onder Instellingen, Opnemen.");
         }
 
         using var enumerator = new MMDeviceEnumerator();
@@ -53,12 +59,12 @@ internal static class PreflightCheckService
 
         if (!string.IsNullOrWhiteSpace(micDeviceId))
         {
-            selectedMicFriendlyName = InspectCaptureDevice(micDeviceId, defaultMic, lines, warnings, errors);
+            selectedMicFriendlyName = InspectCaptureDevice(micDeviceId, defaultMic, lines, warnings, errors, userWarnings, userErrors);
         }
 
         if (!string.IsNullOrWhiteSpace(systemDeviceId))
         {
-            selectedRenderFriendlyName = InspectRenderDevice(systemDeviceId, defaultRender, lines, warnings, errors);
+            selectedRenderFriendlyName = InspectRenderDevice(systemDeviceId, defaultRender, lines, warnings, errors, userWarnings, userErrors);
         }
 
         var deviceProfile = AudioDeviceRiskAnalyzer.DetermineDeviceProfile(selectedMicFriendlyName, selectedRenderFriendlyName);
@@ -79,7 +85,7 @@ internal static class PreflightCheckService
 
         if (settings is not null)
         {
-            InspectWorkerConfiguration(settings, lines, warnings, errors);
+            InspectWorkerConfiguration(settings, lines, warnings, errors, userWarnings, userErrors);
         }
 
         if (warnings.Count > 0)
@@ -107,20 +113,28 @@ internal static class PreflightCheckService
             Success = errors.Count == 0,
             HasWarnings = warnings.Count > 0,
             Lines = lines,
+            UserWarnings = userWarnings,
+            UserErrors = userErrors,
         };
     }
 
-    private static void InspectWorkerConfiguration(ApplicationSettings settings, List<string> lines, List<string> warnings, List<string> errors)
+    private static void InspectWorkerConfiguration(ApplicationSettings settings, List<string> lines, List<string> warnings, List<string> errors, List<string> userWarnings, List<string> userErrors)
     {
         if (!settings.Worker.WhisperXEnabled)
         {
             warnings.Add("WhisperX worker staat uit. Opnemen werkt wel, maar automatische transcriptie, import, watch folders en retention worden dan niet uitgevoerd.");
+            userWarnings.Add("Uitschrijven staat uit. Opnemen werkt wel, maar de opname wordt niet vanzelf in tekst omgezet.");
             return;
         }
 
-        InspectExternalDependency("Python", settings.Worker.PythonExe, required: true, lines, errors);
-        InspectExternalDependency("FFmpeg", settings.Worker.FfmpegPath, required: true, lines, errors);
-        lines.Add("Herstelhulp: gebruik install-prereqs.ps1 in de bundle-root voor dependency-check en worker-venv-bootstrap.");
+        // Zonder transcriptie-omgeving kan opnemen gewoon; alleen uitschrijven wacht tot de installatie is hersteld.
+        var pythonOk = InspectExternalDependency("Python", settings.Worker.PythonExe, lines);
+        var ffmpegOk = InspectExternalDependency("FFmpeg", settings.Worker.FfmpegPath, lines);
+        if (!pythonOk || !ffmpegOk)
+        {
+            warnings.Add(TranscriptionRuntimeStatus.MissingMessage + " Opnemen werkt wel; uitschrijven pas daarna.");
+            userWarnings.Add(TranscriptionRuntimeStatus.MissingMessage + " Opnemen werkt wel; uitschrijven pas daarna.");
+        }
         lines.Add(WorkerProductionProfile.BuildSummary(settings));
 
 
@@ -129,6 +143,7 @@ internal static class PreflightCheckService
             if (settings.Worker.Import.WatchFolders.Count == 0)
             {
                 warnings.Add("Watch folder verwerking staat aan maar er zijn nog geen watch folders geconfigureerd.");
+                userWarnings.Add("Automatisch importeren uit een map staat aan, maar er is nog geen map gekozen.");
             }
             else
             {
@@ -149,11 +164,13 @@ internal static class PreflightCheckService
                         else
                         {
                             warnings.Add($"Watch folder bestaat nog niet: {watchFolder}");
+                            userWarnings.Add($"De map voor automatisch importeren bestaat niet: {watchFolder}");
                         }
                     }
                     catch (Exception ex)
                     {
                         errors.Add($"Watch folder niet leesbaar: {watchFolder} ({ex.Message})");
+                        userErrors.Add($"De map voor automatisch importeren is niet te lezen: {watchFolder}");
                     }
                 }
             }
@@ -165,12 +182,13 @@ internal static class PreflightCheckService
             }
             else
             {
-                warnings.Add("Import helper executable kon niet worden bevestigd. Watch folder ingest vereist een beschikbare " + Branding.ExecutableBaseName + ".exe in de programmamap.");
+                warnings.Add($"Import helper executable kon niet worden bevestigd. Watch folder ingest vereist een beschikbare {Branding.ExecutableBaseName}.exe in de programmamap.");
+                userWarnings.Add("Automatisch importeren uit een map werkt nu niet: Captivox vindt zijn eigen programma niet in de programmamap. Installeer Captivox opnieuw.");
             }
         }
     }
 
-    private static string? InspectCaptureDevice(string deviceId, MMDevice? defaultMic, List<string> lines, List<string> warnings, List<string> errors)
+    private static string? InspectCaptureDevice(string deviceId, MMDevice? defaultMic, List<string> lines, List<string> warnings, List<string> errors, List<string> userWarnings, List<string> userErrors)
     {
         try
         {
@@ -182,17 +200,19 @@ internal static class PreflightCheckService
             if (defaultMic is not null && !string.Equals(defaultMic.ID, micDevice.ID, StringComparison.OrdinalIgnoreCase))
             {
                 warnings.Add("De gekozen microfoon is niet de huidige standaardmicrofoon. Dat hoeft niet fout te zijn, maar controleer of dit bewust is.");
+                userWarnings.Add($"Je microfoon ({micDevice.FriendlyName}) is een ander apparaat dan je standaardmicrofoon ({defaultMic.FriendlyName}). Teams en Zoom gebruiken meestal de standaardmicrofoon.");
             }
             return micDevice.FriendlyName;
         }
         catch (Exception ex)
         {
             errors.Add($"Microfoon kan niet worden geopend: {ex.Message}");
+            userErrors.Add("De gekozen microfoon kan niet worden geopend. Staat hij aan en is hij aangesloten? Kies anders een andere onder Instellingen, Opnemen.");
             return null;
         }
     }
 
-    private static string? InspectRenderDevice(string deviceId, MMDevice? defaultRender, List<string> lines, List<string> warnings, List<string> errors)
+    private static string? InspectRenderDevice(string deviceId, MMDevice? defaultRender, List<string> lines, List<string> warnings, List<string> errors, List<string> userWarnings, List<string> userErrors)
     {
         try
         {
@@ -204,32 +224,31 @@ internal static class PreflightCheckService
             if (defaultRender is not null && !string.Equals(defaultRender.ID, renderDevice.ID, StringComparison.OrdinalIgnoreCase))
             {
                 warnings.Add("De gekozen systeemaudio is niet het huidige standaard afspeelapparaat. Audio van Teams/Zoom/Browser komt vaak op het standaard afspeelapparaat uit; kies dus bewust het juiste renderdevice.");
+                userWarnings.Add($"Het geluid van de anderen komt van een ander apparaat ({renderDevice.FriendlyName}) dan je standaard afspeelapparaat ({defaultRender.FriendlyName}). Teams en Zoom spelen meestal af via het standaardapparaat.");
             }
             return renderDevice.FriendlyName;
         }
         catch (Exception ex)
         {
             errors.Add($"Systeemaudio-device kan niet worden geopend: {ex.Message}");
+            userErrors.Add("Het apparaat voor het geluid van de anderen kan niet worden geopend. Kies een ander onder Instellingen, Opnemen.");
             return null;
         }
     }
 
-    private static void InspectExternalDependency(string label, string configuredValue, bool required, List<string> lines, List<string> errors)
+    // De technische details gaan in de regels; de melding voor de gebruiker zet de aanroeper erbij.
+    private static bool InspectExternalDependency(string label, string configuredValue, List<string> lines)
     {
         if (TryResolveExecutable(configuredValue, out var resolvedPath))
         {
             lines.Add($"{label} bereikbaar: {resolvedPath}");
-            return;
+            return true;
         }
 
-        var message = string.IsNullOrWhiteSpace(configuredValue)
-            ? $"{label} pad ontbreekt."
-            : $"{label} niet gevonden of niet uitvoerbaar: {configuredValue}";
-
-        if (required)
-        {
-            errors.Add($"{message} Herstel: voer install-prereqs.ps1 uit of stel in Instellingen een geldig pad in.");
-        }
+        lines.Add(string.IsNullOrWhiteSpace(configuredValue)
+            ? $"{label}: pad ontbreekt."
+            : $"{label} niet gevonden: {configuredValue}");
+        return false;
     }
 
     private static bool TryResolveExecutable(string? configuredValue, out string resolvedPath)

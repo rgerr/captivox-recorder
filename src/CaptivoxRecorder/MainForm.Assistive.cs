@@ -140,7 +140,7 @@ public sealed partial class MainForm
         _meetingDetectionBannerPanel.Visible = true;
         if (!Visible || WindowState == FormWindowState.Minimized)
         {
-            _notifyIcon.ShowBalloonTip(3000, Branding.DisplayName, detection.PromptText, ToolTipIcon.Info);
+            _notifyIcon.ShowBalloonTip(3000, Branding.DisplayName, UiText.T(detection.PromptText), ToolTipIcon.Info);
         }
     }
 

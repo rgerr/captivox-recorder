@@ -8,6 +8,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <RootNamespace>LocalCaptureAgent</RootNamespace>
+    <Company>rgerr</Company>
+    <Authors>rgerr</Authors>
     <ApplicationIcon>Assets\captivox-recorder.ico</ApplicationIcon>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
@@ -16,7 +18,8 @@
     <AssemblyName>CaptivoxRecorder</AssemblyName>
     <AssemblyTitle>Captivox Recorder</AssemblyTitle>
     <Product>Captivox Recorder</Product>
-    <Version>2.0.0</Version>
+    <Copyright>Copyright (c) 2026 rgerr. GPL-3.0-or-later.</Copyright>
+    <Version>2.0.1</Version>
   </PropertyGroup>
 
   <PropertyGroup>

@@ -4,7 +4,12 @@ namespace LocalCaptureAgent.Models;
 
 public sealed class UiSettings
 {
+    // De taal van de opnames (transcriptie), zie LanguageProfileCatalog. Los van de taal van de interface hieronder.
     public string LanguageProfile { get; set; } = "nl";
+    // De taal van de interface: en, nl, de of fr (zie UiText). Leeg in een instellingenbestand van voor deze instelling;
+    // SettingsStore.Load maakt daar nl van (de interface was toen Nederlands) en voor een nieuwe installatie en (of de taal
+    // die bij de installatie is gekozen).
+    public string InterfaceLanguage { get; set; } = string.Empty;
     public string OutputRoot { get; set; } = Branding.DefaultRecordingsRoot;
     public string? PreferredMicDeviceId { get; set; }
     public string? PreferredSystemDeviceId { get; set; }

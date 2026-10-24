@@ -66,8 +66,9 @@ public sealed partial class MainForm
 
     private void ShowPremiumFeatureRequiredMessage(string featureName)
     {
-        var message = $"{featureName} hoort in deze publieke productlijn beschikbaar te zijn.{Environment.NewLine}{Environment.NewLine}Als de functie toch geblokkeerd lijkt, controleer dan de lokale instellingen, prerequisites en sessiestatus.";
-        ShowOwnedMessage(this, message, $"{featureName} niet beschikbaar", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        var message = UiText.F("{0} hoort in deze publieke productlijn beschikbaar te zijn.", featureName) + Environment.NewLine + Environment.NewLine
+            + UiText.T("Als de functie toch geblokkeerd lijkt, controleer dan de lokale instellingen, prerequisites en sessiestatus.");
+        ShowOwnedMessage(this, message, UiText.F("{0} niet beschikbaar", featureName), MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
     private bool ShowLicenseManagementDialog(IWin32Window? owner = null, Action? onStateChanged = null)

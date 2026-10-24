@@ -27,6 +27,8 @@ public sealed partial class MainForm
     private string _meetingsLoadedQuery = string.Empty;
     // De stand van de laatste lijst zonder zoekopdracht, apart bewaard: een zoekopdracht daarna zet het getal niet terug.
     private int _meetingsWaitingCount;
+    // Hoeveel overleggen er zijn (zonder zoekterm); -1 zolang de lijst nog niet is ingelezen. Voor de welkomstkaart op Vandaag.
+    private int _meetingsTotalCount = -1;
     private HashSet<string> _meetingsWaitingKeys = new(StringComparer.OrdinalIgnoreCase);
     private DateTimeOffset _meetingsWaitingLoadedAt = DateTimeOffset.MinValue;
     private string _meetingsDetailTab = "tekst";
@@ -101,7 +103,6 @@ public sealed partial class MainForm
             BorderStyle = BorderStyle.FixedSingle,
             Margin = new Padding(0, 4, 10, 4),
             AccessibleName = "Zoeken in overleggen",
-            AccessibleDescription = "skip-ui-localization",
         };
         _meetingsSearchBox.TextChanged += (_, _) =>
         {
@@ -126,7 +127,6 @@ public sealed partial class MainForm
             Cursor = Cursors.Hand,
             BackColor = ShellPalette.Surface,
             ForeColor = ShellPalette.Text,
-            AccessibleDescription = "skip-ui-localization",
         };
         _meetingsWaitingToggle.FlatAppearance.BorderColor = Color.FromArgb(185, 194, 204);
         _meetingsWaitingToggle.FlatAppearance.CheckedBackColor = ShellPalette.AccentSoft;
@@ -148,7 +148,6 @@ public sealed partial class MainForm
                 Width = LogicalToDeviceUnits(width),
                 Margin = new Padding(0, 6, 10, 4),
                 AccessibleName = name,
-                AccessibleDescription = "skip-ui-localization",
             };
             combo.Items.AddRange(items);
             combo.SelectedIndex = selected;
@@ -246,6 +245,9 @@ public sealed partial class MainForm
                     _meetingsWaitingCount = rows.Count(r => r.Waiting);
                     _meetingsWaitingKeys = MeetingListService.WaitingKeys(rows);
                     _meetingsWaitingLoadedAt = _meetingsLoadedAt;
+                    var hadNone = _meetingsTotalCount <= 0;
+                    _meetingsTotalCount = rows.Count;
+                    if (hadNone != (_meetingsTotalCount == 0)) RenderTodayWelcome();
                 }
 
                 ApplyMeetingsFilter();
@@ -284,7 +286,7 @@ public sealed partial class MainForm
             .ToList();
         var waitingCount = inOrganization.Count(r => r.Waiting);
         var rows = waitingOnly ? inOrganization.Where(r => r.Waiting).ToList() : inOrganization.Where(r => days == 0 || r.When >= since).ToList();
-        if (_meetingsWaitingToggle is not null) _meetingsWaitingToggle.Text = $"Wacht op jou ({waitingCount})";
+        if (_meetingsWaitingToggle is not null) _meetingsWaitingToggle.Text = UiText.F("Wacht op jou ({0})", waitingCount);
 
         var keep = _meetingsSelectedDirectory;
         _meetingsList.BeginUpdate();
@@ -385,8 +387,8 @@ public sealed partial class MainForm
         var titles = ShellStack();
         titles.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
         ShellStackAdd(titles, ShellLineLabel(row.Title, 14F, FontStyle.Bold, ShellPalette.Text, 32));
-        var when = row.When.ToString("dddd d MMMM HH:mm", DutchCulture) + (MeetingListService.Duration(entry) is { Length: > 0 } d ? ", " + d : string.Empty)
-                   + (entry.Participants.Count > 0 ? $", {entry.Participants.Count} deelnemer{(entry.Participants.Count == 1 ? string.Empty : "s")}" : string.Empty);
+        var when = row.When.ToString(UiText.DayMonthFormat + " HH:mm", UiText.Culture) + (MeetingListService.Duration(entry) is { Length: > 0 } d ? ", " + d : string.Empty)
+                   + (entry.Participants.Count == 1 ? ", " + UiText.T("1 deelnemer") : entry.Participants.Count > 1 ? ", " + UiText.F("{0} deelnemers", entry.Participants.Count) : string.Empty);
         var whenRow = new FlowLayoutPanel { AutoSize = true, WrapContents = true, BackColor = Color.Transparent, Margin = new Padding(0, 2, 0, 0), Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top };
         whenRow.Controls.Add(ShellLabel(char.ToUpperInvariant(when[0]) + when[1..], 9.75F, FontStyle.Regular, ShellPalette.TextSecondary, new Padding(2, 2, 0, 0)));
         ShellStackAdd(titles, whenRow);
@@ -397,7 +399,7 @@ public sealed partial class MainForm
         }
 
         var more = ShellButton("...", false, (_, _) => { });
-        more.AccessibleName = "Meer acties";
+        more.AccessibleName = UiText.T("Meer acties");
         more.Click += (_, _) => BuildMeetingMenu(entry).Show(more, new Point(0, more.Height));
         header.Controls.Add(more, 2, 0);
         layout.Controls.Add(header, 0, 0);
@@ -422,7 +424,6 @@ public sealed partial class MainForm
                 Cursor = Cursors.Hand,
                 ForeColor = key == _meetingsDetailTab ? ShellPalette.Accent : ShellPalette.Text,
                 BackColor = ShellPalette.Surface,
-                AccessibleDescription = "skip-ui-localization",
             };
             tab.FlatAppearance.BorderSize = 0;
             tab.FlatAppearance.CheckedBackColor = ShellPalette.AccentSoft;
@@ -443,7 +444,7 @@ public sealed partial class MainForm
         {
             var notice = new Label
             {
-                Text = CanRetranscribe(entry) ? "Hier ging iets mis. Met Opnieuw uitschrijven probeert Captivox het nog een keer." : "Hier ging iets mis; de details staan in de map van de opname.",
+                Text = TranscriptionRuntimeStatus.IsRuntimeMissing(_appSettings.Worker) ? TranscriptionRuntimeStatus.MissingMessage : CanRetranscribe(entry) ? "Hier ging iets mis. Met Opnieuw uitschrijven probeert Captivox het nog een keer." : "Hier ging iets mis; de details staan in de map van de opname.",
                 AutoSize = false,
                 Dock = DockStyle.Top,
                 Height = ShellLineHeight(10F, FontStyle.Regular, 40),
@@ -453,7 +454,6 @@ public sealed partial class MainForm
                 ForeColor = Color.FromArgb(61, 42, 10),
                 Font = ShellFont("Segoe UI", 10F, FontStyle.Regular, GraphicsUnit.Point),
                 Margin = new Padding(0, 10, 0, 0),
-                AccessibleDescription = "skip-ui-localization",
             };
             layout.Controls.Add(notice, 0, 3);
         }
@@ -481,7 +481,6 @@ public sealed partial class MainForm
             Dock = DockStyle.Fill,
             Text = "Bezig met laden...",
             AccessibleName = "Uitgeschreven tekst",
-            AccessibleDescription = "skip-ui-localization",
         };
         content.Controls.Add(text);
         var cancellation = new CancellationTokenSource();
@@ -520,7 +519,7 @@ public sealed partial class MainForm
         menu.Closed += (_, _) => BeginInvoke(new Action(menu.Dispose));
         void Add(ToolStripItemCollection items, string text, Func<Task> action, bool enabled = true)
         {
-            var item = new ToolStripMenuItem(text) { Enabled = enabled, AccessibleDescription = "skip-ui-localization" };
+            var item = new ToolStripMenuItem(text) { Enabled = enabled };
             item.Click += async (_, _) => await RunMeetingActionAsync(entry, action);
             items.Add(item);
         }
@@ -535,9 +534,10 @@ public sealed partial class MainForm
         Add(menu.Items, "Titel wijzigen", () => { EditSelectedLibrarySessionTitle(); return Task.CompletedTask; });
         Add(menu.Items, "Opnieuw uitschrijven", RetranscribeSelectedLibrarySessionAsync, CanRetranscribe(entry));
         menu.Items.Add(new ToolStripSeparator());
-        var delete = new ToolStripMenuItem("Naar de Prullenbak") { ForeColor = ShellPalette.Bad, AccessibleDescription = "skip-ui-localization" };
+        var delete = new ToolStripMenuItem("Naar de Prullenbak") { ForeColor = ShellPalette.Bad };
         delete.Click += async (_, _) => await RunMeetingActionAsync(entry, DeleteSelectedLibrarySessionAsync);
         menu.Items.Add(delete);
+        UiTextBinder.Attach(menu);
         return menu;
     }
 

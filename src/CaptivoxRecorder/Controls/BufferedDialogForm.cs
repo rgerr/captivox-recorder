@@ -1,4 +1,5 @@
 using System.Windows.Forms;
+using LocalCaptureAgent.Services;
 
 namespace LocalCaptureAgent.Controls;
 
@@ -10,6 +11,13 @@ internal sealed class BufferedDialogForm : Form
                  ControlStyles.OptimizedDoubleBuffer |
                  ControlStyles.ResizeRedraw, true);
         DoubleBuffered = true;
+    }
+
+    // De teksten in de taal van de interface, voordat het venster te zien is.
+    protected override void OnLoad(EventArgs e)
+    {
+        UiTextBinder.Attach(this);
+        base.OnLoad(e);
     }
 
     protected override CreateParams CreateParams
