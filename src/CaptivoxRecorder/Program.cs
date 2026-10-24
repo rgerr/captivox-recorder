@@ -1,4 +1,3 @@
-using System.Text;
 using Captivox.Recorder.Services;
 
 namespace Captivox.Recorder;
@@ -99,7 +98,7 @@ internal static class Program
         return null;
     }
 
-    // Hulpopdrachten voor de transcriptieworker; die roept de recorder aan voor het token, imports en herstel.
+    // Hulpopdrachten voor de transcriptieworker; die roept de recorder aan voor imports en herstel.
     private static bool TryHandleCommandLine(string[] args)
     {
         if (args.Length == 0)
@@ -108,52 +107,6 @@ internal static class Program
         }
 
         var command = args[0];
-        if (string.Equals(command, "--get-hf-token", StringComparison.OrdinalIgnoreCase))
-        {
-            if (SettingsStore.TryLoadToken(out var token, out var error) && !string.IsNullOrWhiteSpace(token))
-            {
-                Console.Out.Write(token);
-                Console.Out.Flush();
-                Environment.Exit(0);
-            }
-
-            Console.Error.WriteLine(error ?? "Geen opgeslagen Hugging Face-token gevonden.");
-            Environment.Exit(2);
-        }
-
-        if (string.Equals(command, "--export-hf-token", StringComparison.OrdinalIgnoreCase))
-        {
-            try
-            {
-                if (args.Length < 2 || string.IsNullOrWhiteSpace(args[1]))
-                {
-                    Console.Error.WriteLine("Pad voor het token ontbreekt.");
-                    Environment.Exit(1);
-                }
-
-                if (!SettingsStore.TryLoadToken(out var token, out var error) || string.IsNullOrWhiteSpace(token))
-                {
-                    Console.Error.WriteLine(error ?? "Geen opgeslagen Hugging Face-token gevonden.");
-                    Environment.Exit(2);
-                }
-
-                var directory = Path.GetDirectoryName(args[1]);
-                if (!string.IsNullOrWhiteSpace(directory))
-                {
-                    Directory.CreateDirectory(directory);
-                }
-
-                File.WriteAllText(args[1], token, Encoding.UTF8);
-                Environment.Exit(0);
-            }
-            catch (Exception ex)
-            {
-                AppRuntime.LogException("Token doorgeven mislukt", ex);
-                Console.Error.WriteLine(ex.Message);
-                Environment.Exit(3);
-            }
-        }
-
         if (string.Equals(command, "--recover-interrupted", StringComparison.OrdinalIgnoreCase))
         {
             try

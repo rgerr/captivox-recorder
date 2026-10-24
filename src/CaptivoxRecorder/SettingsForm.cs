@@ -12,11 +12,6 @@ internal sealed class SettingsForm : Form
     private readonly ComboBox _model = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 260 };
     private readonly ComboBox _profile = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 260 };
     private readonly CheckBox _transcribe = new() { Text = "Opnames automatisch uitschrijven", AutoSize = true };
-    private readonly CheckBox _diarization = new() { Text = "Sprekers herkennen (wie zegt wat)", AutoSize = true };
-    private readonly TextBox _token = new() { Width = 360, UseSystemPasswordChar = true };
-    private readonly Label _tokenState = new() { AutoSize = true, ForeColor = Color.FromArgb(100, 116, 139) };
-    private readonly NumericUpDown _minSpeakers = new() { Minimum = 0, Maximum = 20, Width = 60 };
-    private readonly NumericUpDown _maxSpeakers = new() { Minimum = 0, Maximum = 20, Width = 60 };
     private readonly CheckBox _exportSrt = new() { Text = "Ook ondertitels maken (.srt)", AutoSize = true };
     private readonly CheckBox _exportVtt = new() { Text = "Ook webondertitels maken (.vtt)", AutoSize = true };
     private readonly TextBox _pythonExe = new() { Width = 360 };
@@ -24,7 +19,6 @@ internal sealed class SettingsForm : Form
     private readonly CheckBox _minimizeToTray = new() { Text = "Bij sluiten naar het systeemvak (opnemen met Ctrl+Shift+F9 blijft werken)", AutoSize = true };
     private readonly CheckBox _startWithWindows = new() { Text = "Starten met Windows (in het systeemvak)", AutoSize = true };
     private readonly CheckBox _diagnostics = new() { Text = "Extra diagnose bij elke opname bewaren", AutoSize = true };
-    private bool _deleteToken;
 
     public ApplicationSettings Result { get; private set; }
     public bool WorkerSettingsChanged { get; private set; }
@@ -108,18 +102,6 @@ internal sealed class SettingsForm : Form
         page.Controls.Add(_profile);
         page.Controls.Add(Hint("Automatisch gebruikt een NVIDIA- of AMD-videokaart als die er is, en anders de processor."));
 
-        page.Controls.Add(Heading("Sprekers"));
-        page.Controls.Add(_diarization);
-        page.Controls.Add(Hint("Sprekerherkenning gebruikt pyannote. Daarvoor heb je een gratis Hugging Face-account en een leestoken nodig, en accepteer je eenmalig de voorwaarden van pyannote/speaker-diarization-3.1 en pyannote/segmentation-3.0 op huggingface.co. Het token wordt versleuteld op deze pc bewaard en alleen gebruikt om de modellen te downloaden; je gesprekken blijven op je pc."));
-        page.Controls.Add(WithButton(_token, "Token wissen", (_, _) => { _deleteToken = true; _token.Text = string.Empty; UpdateTokenState(); }));
-        page.Controls.Add(_tokenState);
-        var speakers = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0, 6, 0, 0) };
-        speakers.Controls.Add(new Label { Text = "Aantal sprekers: minimaal", AutoSize = true, Margin = new Padding(0, 6, 4, 0) });
-        speakers.Controls.Add(_minSpeakers);
-        speakers.Controls.Add(new Label { Text = "maximaal", AutoSize = true, Margin = new Padding(8, 6, 4, 0) });
-        speakers.Controls.Add(_maxSpeakers);
-        page.Controls.Add(speakers);
-        page.Controls.Add(Hint("0 betekent: laat het model het aantal zelf bepalen."));
 
         page.Controls.Add(Heading("Extra bestanden"));
         page.Controls.Add(_exportSrt);
@@ -168,24 +150,10 @@ internal sealed class SettingsForm : Form
         Select(_language, s.Worker.Language);
         Select(_model, s.Worker.WhisperXModel);
         Select(_profile, s.Worker.TranscriptionProfile);
-        _diarization.Checked = s.Worker.DiarizationEnabled;
-        _minSpeakers.Value = s.Worker.MinSpeakers ?? 0;
-        _maxSpeakers.Value = s.Worker.MaxSpeakers ?? 0;
         _exportSrt.Checked = s.Worker.ExportSrt;
         _exportVtt.Checked = s.Worker.ExportVtt;
         _pythonExe.Text = s.Worker.PythonExe;
         _ffmpegPath.Text = s.Worker.FfmpegPath;
-        UpdateTokenState();
-        _token.TextChanged += (_, _) => UpdateTokenState();
-    }
-
-    private void UpdateTokenState()
-    {
-        _tokenState.Text = !string.IsNullOrWhiteSpace(_token.Text)
-            ? "Nieuw token wordt bewaard bij Opslaan."
-            : _deleteToken
-                ? "Het token wordt gewist bij Opslaan."
-                : SettingsStore.HasToken() ? "Er is een token bewaard (niet zichtbaar). Vul een nieuw in om het te vervangen." : "Nog geen token bewaard.";
     }
 
     private static void Select(ComboBox combo, string code)
@@ -205,22 +173,6 @@ internal sealed class SettingsForm : Form
             return;
         }
 
-        if (!string.IsNullOrWhiteSpace(_token.Text))
-        {
-            var token = _token.Text.Trim();
-            if (!token.StartsWith("hf_", StringComparison.Ordinal) || token.Length < 20)
-            {
-                MessageBox.Show(this, "Dit lijkt geen Hugging Face-token (die begint met hf_).", "Instellingen", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            SettingsStore.SaveToken(token);
-        }
-        else if (_deleteToken)
-        {
-            SettingsStore.DeleteToken();
-        }
-
         s.Ui.OutputRoot = outputRoot;
         s.Ui.MinimizeToTray = _minimizeToTray.Checked;
         s.Ui.StartWithWindows = _startWithWindows.Checked;
@@ -229,16 +181,12 @@ internal sealed class SettingsForm : Form
         s.Worker.Language = ((Choice)_language.SelectedItem!).Code;
         s.Worker.WhisperXModel = ((Choice)_model.SelectedItem!).Code;
         s.Worker.TranscriptionProfile = ((Choice)_profile.SelectedItem!).Code;
-        s.Worker.DiarizationEnabled = _diarization.Checked;
-        s.Worker.MinSpeakers = _minSpeakers.Value > 0 ? (int)_minSpeakers.Value : null;
-        s.Worker.MaxSpeakers = _maxSpeakers.Value > 0 ? (int)_maxSpeakers.Value : null;
         s.Worker.ExportSrt = _exportSrt.Checked;
         s.Worker.ExportVtt = _exportVtt.Checked;
         s.Worker.PythonExe = _pythonExe.Text.Trim();
         s.Worker.FfmpegPath = _ffmpegPath.Text.Trim();
 
-        WorkerSettingsChanged = !string.IsNullOrWhiteSpace(_token.Text) || _deleteToken
-            || JsonSerializer.Serialize(s.Worker) != JsonSerializer.Serialize(_original.Worker)
+        WorkerSettingsChanged = JsonSerializer.Serialize(s.Worker) != JsonSerializer.Serialize(_original.Worker)
             || !string.Equals(s.Ui.OutputRoot, _original.Ui.OutputRoot, StringComparison.OrdinalIgnoreCase);
         DialogResult = DialogResult.OK;
         Close();

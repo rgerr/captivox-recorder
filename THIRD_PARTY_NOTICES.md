@@ -17,7 +17,7 @@ Captivox Recorder bouwt voort op het werk van anderen. Hieronder staat wat het g
 | Python 3.10 | PSF License | https://www.python.org |
 | WhisperX 3.7.4 | BSD-2-Clause | https://github.com/m-bain/whisperX |
 | faster-whisper en CTranslate2 | MIT | https://github.com/SYSTRAN/faster-whisper, https://github.com/OpenNMT/CTranslate2 |
-| pyannote.audio 3.3.2 | MIT | https://github.com/pyannote/pyannote-audio |
+| pyannote.audio 3.3.2 (vereist door WhisperX, niet gebruikt) | MIT | https://github.com/pyannote/pyannote-audio |
 | PyTorch en torchaudio 2.8.0 | BSD-3-Clause | https://github.com/pytorch/pytorch |
 | NumPy, pandas | BSD-3-Clause | https://numpy.org, https://pandas.pydata.org |
 | ffmpeg-python | Apache-2.0 | https://github.com/kkroening/ffmpeg-python |
@@ -30,6 +30,5 @@ Captivox Recorder bouwt voort op het werk van anderen. Hieronder staat wat het g
 | --- | --- | --- |
 | Whisper (OpenAI), via faster-whisper | MIT | https://huggingface.co/Systran |
 | wav2vec2-uitlijnmodellen per taal | Apache-2.0 of MIT, per model | https://huggingface.co |
-| pyannote/speaker-diarization-3.1, pyannote/segmentation-3.0 | MIT, voorwaarden accepteren op Hugging Face | https://huggingface.co/pyannote |
 
 De namen en logo's van deze projecten zijn van hun eigenaren. Captivox Recorder is niet aan hen verbonden.

@@ -81,6 +81,7 @@ internal sealed class MainForm : Form
         _launchMinimized = launchMinimized;
         _settings = SettingsStore.Load();
         SaveSettings();
+        SettingsStore.RemoveLegacyToken();
 
         Text = $"{Branding.DisplayName} {AppRuntime.GetProductVersionTag()}";
         Icon = Branding.GetAppIconOrDefault();
@@ -953,7 +954,7 @@ internal sealed class MainForm : Form
     {
         MessageBox.Show(this,
             $"{Branding.DisplayName} {AppRuntime.GetProductVersionTag()}{Environment.NewLine}{Environment.NewLine}" +
-            "Neemt je microfoon en het geluid van de pc op en schrijft het gesprek uit op je eigen pc (WhisperX, pyannote). Er gaat niets naar de cloud." + Environment.NewLine + Environment.NewLine +
+            "Neemt je microfoon en het geluid van de pc op en schrijft het gesprek uit op je eigen pc (WhisperX). Er gaat niets naar de cloud." + Environment.NewLine + Environment.NewLine +
             "Gratis software onder de GNU General Public License versie 3. Zonder enige garantie." + Environment.NewLine +
             "Copyright (c) 2026 rgerr" + Environment.NewLine + Branding.ProjectUrl,
             "Over " + Branding.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Information);

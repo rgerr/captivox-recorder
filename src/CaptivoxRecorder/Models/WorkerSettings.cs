@@ -3,7 +3,7 @@ namespace Captivox.Recorder.Models;
 public sealed class WorkerSettings
 {
     public bool WhisperXEnabled { get; set; } = true;
-    public bool DiarizationEnabled { get; set; } = true;
+    public bool DiarizationEnabled { get; set; } = false;
     public bool UseProductionProfile { get; set; } = true;
     public string TranscriptionProfile { get; set; } = "auto";
     public string WhisperCppExe { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), Branding.AppDataFolder, "runtime", "whispercpp", "whisper-cli.exe");
@@ -14,8 +14,8 @@ public sealed class WorkerSettings
     public string ComputeType { get; set; } = "float16";
     public string Language { get; set; } = "nl";
     public int BatchSize { get; set; } = 4;
-    public int? MinSpeakers { get; set; } = 2;
-    public int? MaxSpeakers { get; set; } = 4;
+    public int? MinSpeakers { get; set; }
+    public int? MaxSpeakers { get; set; }
     public string TranscriptOutputFormat { get; set; } = "txt+json";
     public string DiarizationMode { get; set; } = "stable";
     public string DiarizationAcceleration { get; set; } = "auto";

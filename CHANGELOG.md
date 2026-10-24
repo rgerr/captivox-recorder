@@ -1,5 +1,11 @@
 # Wijzigingen
 
+## 1.1.0 (2026-10-24)
+
+- Sprekerherkenning (pyannote) zit niet meer in de gratis versie. Transcripten tonen alleen de tijd per stuk tekst.
+- Een in versie 1.0.0 bewaard Hugging Face-token wordt bij het starten verwijderd; het is niet meer nodig.
+- De optie `-PreparePyannoteCommunityRuntime` van `install-prereqs.ps1` is vervallen.
+
 ## 1.0.0 (2026-10-22)
 
 Eerste vrije versie onder de GPL-3.0, met broncode.

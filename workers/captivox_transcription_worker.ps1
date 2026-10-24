@@ -174,7 +174,7 @@ function Load-Settings {
             ui = [pscustomobject]@{ outputRoot = $CurrentDefaultOutputRoot; diagnosticsMode = $false }
             worker = [pscustomobject]@{
                 whisperXEnabled = $false
-                diarizationEnabled = $true
+                diarizationEnabled = $false
                 useProductionProfile = $true
                 transcriptionProfile = 'auto'
                 whisperCppExe = (Resolve-BundledWhisperCppExePath)
@@ -339,7 +339,8 @@ function Load-WorkerConfig {
         SessionRoots = @($roots | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
         DiagnosticsMode = [bool]$settings.ui.diagnosticsMode
         WhisperXEnabled = [bool]$settings.worker.whisperXEnabled
-        DiarizationEnabled = [bool]$settings.worker.diarizationEnabled
+        # Sprekerherkenning zit niet in de gratis versie; de instelling wordt genegeerd.
+        DiarizationEnabled = $false
         UseProductionProfile = if ($null -ne $settings.worker.useProductionProfile) { [bool]$settings.worker.useProductionProfile } else { $true }
         TranscriptionProfile = if ($settings.worker.transcriptionProfile) { Normalize-TranscriptionProfile -Profile ([string]$settings.worker.transcriptionProfile) } else { 'auto' }
         WhisperCppExe = if ($settings.worker.whisperCppExe) { [string]$settings.worker.whisperCppExe } else { Resolve-BundledWhisperCppExePath }

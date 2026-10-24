@@ -133,7 +133,7 @@ internal sealed class WorkerProcessManager : IDisposable
             var exePath = Environment.ProcessPath;
             if (!string.IsNullOrWhiteSpace(exePath) && File.Exists(exePath))
             {
-                // De worker haalt het Hugging Face-token en de audio-import via de recorder zelf op.
+                // De worker doet de audio-import en het herstel via de recorder zelf.
                 startInfo.Environment["CAPTIVOX_TOKEN_HELPER_EXE"] = exePath;
                 startInfo.Environment["CAPTIVOX_IMPORT_HELPER_EXE"] = exePath;
                 startInfo.Environment["CAPTIVOX_RECORDER_EXE"] = exePath;

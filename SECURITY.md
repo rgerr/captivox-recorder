@@ -6,7 +6,8 @@ Alleen de nieuwste release krijgt beveiligingsfixes.
 
 | Versie | Ondersteund |
 | --- | --- |
-| 1.0.x | ja |
+| 1.1.x | ja |
+| 1.0.x | nee |
 | 0.9.0-beta1 en ouder | nee |
 
 ## Een kwetsbaarheid melden
@@ -22,7 +23,6 @@ Je krijgt binnen een week een eerste reactie. Een bevestigde kwetsbaarheid wordt
 Bijvoorbeeld:
 
 - opnames, transcripten of logboeken die terechtkomen waar ze niet horen, of die anderen op dezelfde pc kunnen lezen;
-- het Hugging Face-token dat onversleuteld wordt bewaard of in een logboek belandt;
 - paden, bestandsnamen of instellingen waarmee iemand code kan laten uitvoeren (bijvoorbeeld via de worker of `install-prereqs.ps1`);
 - netwerkverkeer dat er volgens [PRIVACY.md](PRIVACY.md) niet hoort te zijn.
 
@@ -30,9 +30,8 @@ Bijvoorbeeld:
 
 - Alles draait lokaal onder het eigen Windows-account; beheerdersrechten zijn niet nodig.
 - De recorder start de worker zelf, met `-ExecutionPolicy Bypass` alleen voor dat ene script.
-- De worker haalt het token per transcriptie op via de recorder (`CaptivoxRecorder.exe --get-hf-token`) en geeft het alleen door aan het Python-proces van die transcriptie (als `HF_TOKEN`), niet op de opdrachtregel en niet in een logboek.
 - Een opname is een gewone map: je kunt altijd zien wat er bewaard is.
 
 ---
 
-**In English**: please report vulnerabilities privately through GitHub (*Security*, *Report a vulnerability*), not in a public issue, and do not attach real recordings. Only the latest 1.0.x release is supported.
+**In English**: please report vulnerabilities privately through GitHub (*Security*, *Report a vulnerability*), not in a public issue, and do not attach real recordings. Only the latest 1.1.x release is supported.

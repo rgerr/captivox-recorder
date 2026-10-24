@@ -77,7 +77,6 @@ internal static class WorkerProductionProfile
     {
         var worker = settings.Worker;
         Normalize(worker);
-        var speakers = worker.DiarizationEnabled ? "sprekers herkennen met pyannote 3.1" : "zonder sprekerherkenning";
-        return $"Transcriptie: {GetTranscriptionProfileDisplayName(worker.TranscriptionProfile)}, model {worker.WhisperXModel}, taal {worker.Language}, {speakers}.";
+        return $"Transcriptie: {GetTranscriptionProfileDisplayName(worker.TranscriptionProfile)}, model {worker.WhisperXModel}, taal {worker.Language}.";
     }
 }

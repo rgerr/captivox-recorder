@@ -1,7 +1,0 @@
-# Geïsoleerde CPU-runtime voor pyannote community-1 diarization.
-# Bewust gescheiden van de hoofdworker om WhisperX/NVIDIA niet te breken.
-pyannote.audio>=4.0,<5.0
-torch==2.8.0
-torchaudio==2.8.0
-numpy>=2.0,<3.0
-pandas>=2.2,<3.0

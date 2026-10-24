@@ -5,8 +5,7 @@ param(
     [switch]$SkipAppSettings,
     [switch]$OverwriteExistingAppSettings,
     [switch]$RebuildVenv,
-    [switch]$PrepareAmdGpuRuntime,
-    [switch]$PreparePyannoteCommunityRuntime
+    [switch]$PrepareAmdGpuRuntime
 )
 
 $ErrorActionPreference = 'Stop'
@@ -699,113 +698,6 @@ function Install-WorkerStack([string]$VenvPython, [string]$InstallSpecPath, [str
 
 
 
-function Test-PyannoteCommunityRuntime([string]$PythonExe, [string]$BundleRoot) {
-    if ([string]::IsNullOrWhiteSpace($PythonExe) -or -not (Test-Path -LiteralPath $PythonExe)) { return $false }
-
-    Write-Host '== Pyannote community-1 CPU-runtime licht valideren' -ForegroundColor Cyan
-
-    $code = @'
-import importlib.metadata
-import sys
-try:
-    version = importlib.metadata.version("pyannote.audio")
-    major = int(str(version).split(".")[0])
-    print(f"pyannote.audio={version}")
-    sys.exit(0 if major >= 4 else 2)
-except Exception as exc:
-    print(f"pyannote community metadata probe failed: {exc}", file=sys.stderr)
-    sys.exit(3)
-'@
-    $probePath = New-TemporaryProbeFile -StepName 'pyannote_community_metadata_probe' -Content $code
-    try {
-        $result = Invoke-NativeLoggedWithTimeout -FilePath $PythonExe -ArgumentList @($probePath) -StepName 'pyannote_community_metadata_probe' -TimeoutSeconds 30
-        if ($result.TimedOut) {
-            Add-WarningLine "Pyannote community-1 metadata-probe liep vast en is afgebroken. Log: $($result.LogPath)"
-            return $false
-        }
-        if ($result.ExitCode -ne 0) { return $false }
-    }
-    finally {
-        if (Test-Path -LiteralPath $probePath) {
-            Remove-Item -LiteralPath $probePath -Force -ErrorAction SilentlyContinue
-        }
-    }
-
-    $sidecarScript = Join-Path $BundleRoot 'workers\diarize_with_pyannote_community.py'
-    if (Test-Path -LiteralPath $sidecarScript) {
-        $sidecarProbe = Invoke-NativeLoggedWithTimeout -FilePath $PythonExe -ArgumentList @($sidecarScript, '--self-test') -StepName 'pyannote_community_sidecar_selftest' -TimeoutSeconds 30
-        if ($sidecarProbe.TimedOut) {
-            Add-WarningLine "Pyannote community-1 sidecar-selftest liep vast en is afgebroken. Log: $($sidecarProbe.LogPath)"
-            return $false
-        }
-        return ($sidecarProbe.ExitCode -eq 0)
-    }
-
-    Add-WarningLine "Pyannote community-1 sidecarscript ontbreekt: $sidecarScript"
-    return $false
-}
-
-function Ensure-PyannoteCommunityRuntime([string]$BundleRoot, [string]$Series) {
-    $specPath = Join-Path $BundleRoot 'workers\requirements.pyannote-community.cpu.txt'
-    if (-not (Test-Path -LiteralPath $specPath)) {
-        Add-WarningLine "Pyannote community-1 requirements ontbreken: $specPath"
-        return $null
-    }
-
-    $runtimeRoot = Join-Path (Get-AppDataRoot) 'runtime\pyannote-community'
-    $venvPath = Join-Path $runtimeRoot '.venv'
-    $pythonPath = Join-Path $venvPath 'Scripts\python.exe'
-    if (Test-PyannoteCommunityRuntime -PythonExe $pythonPath -BundleRoot $BundleRoot) {
-        Add-Summary "Pyannote community-1 CPU-runtime aanwezig en self-test geslaagd: $pythonPath"
-        return $pythonPath
-    }
-
-    Write-Host '== Pyannote community-1 CPU-runtime voorbereiden' -ForegroundColor Cyan
-    New-Item -ItemType Directory -Path $runtimeRoot -Force | Out-Null
-
-    $pythonBootstrap = $script:BundledPythonPath
-    $venvArgs = @()
-    if ($pythonBootstrap -and (Test-Path -LiteralPath $pythonBootstrap)) {
-        Add-Summary 'Bundled Python-runtime wordt gebruikt als bootstrapbron voor de pyannote community-1 CPU-runtime.'
-        $venvArgs = @('-m', 'venv', $venvPath)
-    }
-    else {
-        $launcher = Get-PythonLauncherPath
-        if (-not $launcher) {
-            Add-WarningLine 'Python launcher (py.exe) ontbreekt; pyannote community-1 CPU-runtime kan niet worden aangemaakt. Diarization valt terug op hoofdworker/3.1.'
-            return $null
-        }
-        $pythonBootstrap = $launcher
-        $venvArgs = @("-$Series", '-m', 'venv', $venvPath)
-    }
-
-    $venvResult = Invoke-NativeLogged -FilePath $pythonBootstrap -ArgumentList $venvArgs -StepName 'pyannote_community_venv_create'
-    if ($venvResult.ExitCode -ne 0) {
-        Add-WarningLine "Pyannote community-1 CPU-runtime kon niet worden aangemaakt. Diarization valt terug op hoofdworker/3.1. Log: $($venvResult.LogPath)"
-        return $null
-    }
-
-    $pipUpgrade = Invoke-NativeLogged -FilePath $pythonPath -ArgumentList @('-m', 'pip', 'install', '--upgrade', 'pip', 'setuptools', 'wheel') -StepName 'pyannote_community_pip_upgrade'
-    if ($pipUpgrade.ExitCode -ne 0) {
-        Add-WarningLine "pip upgrade voor pyannote community-1 CPU-runtime faalde. Log: $($pipUpgrade.LogPath)"
-        return $null
-    }
-
-    $install = Invoke-NativeLogged -FilePath $pythonPath -ArgumentList @('-m', 'pip', 'install', '-r', $specPath) -StepName 'pyannote_community_requirements_install'
-    if ($install.ExitCode -ne 0) {
-        Add-WarningLine "Installatie van pyannote community-1 CPU-runtime faalde. Diarization valt terug op hoofdworker/3.1. Log: $($install.LogPath)"
-        return $null
-    }
-
-    if (Test-PyannoteCommunityRuntime -PythonExe $pythonPath -BundleRoot $BundleRoot) {
-        Add-Summary "Pyannote community-1 CPU-runtime geinstalleerd en self-test geslaagd: $pythonPath"
-        return $pythonPath
-    }
-
-    Add-WarningLine 'Pyannote community-1 CPU-runtime kon na installatie niet worden gevalideerd; fallback blijft beschikbaar.'
-    return $null
-}
-
 function Write-ResolvedWorkerLock([string]$VenvPython, [string]$RealizedLockPath) {
     if ([string]::IsNullOrWhiteSpace($RealizedLockPath)) {
         return $false
@@ -1277,12 +1169,6 @@ $pythonOk = Ensure-Python -Series $PythonSeries
 $venvPython = $null
 if ($pythonOk) {
     $venvPython = Ensure-Venv -Series $PythonSeries -TargetVenv $VenvPath -RequirementsPath $requirementsPath -InstallSpecPath $installSpecPath -RealizedLockPath $bundle.RealizedLockSpec
-    if ($PreparePyannoteCommunityRuntime) {
-        $pyannoteCommunityPython = Ensure-PyannoteCommunityRuntime -BundleRoot $bundleRoot -Series $PythonSeries
-    }
-    else {
-        Add-Summary 'Pyannote community-1 sidecar-bootstrap is standaard overgeslagen. AMD-diarization gebruikt de hoofdworker/pyannote 3.1 CPU-route; community-1 sidecar blijft optioneel voor latere expliciete validatie.'
-    }
 }
 
 $ffmpegPath = Ensure-FFmpeg
@@ -1312,7 +1198,6 @@ if ($ffmpegPath) {
 else {
     Write-Host '- ffmpeg-pad: nog niet bevestigd'
 }
-Write-Host '- Sprekerherkenning (pyannote): sla een Hugging Face-token op in Captivox Recorder of zet de omgevingsvariabele HF_TOKEN, en accepteer op huggingface.co de voorwaarden van pyannote/speaker-diarization-3.1 en pyannote/segmentation-3.0.'
 if ($script:BundledPythonPath) { Write-Host "- Bundled Python-bron: $script:BundledPythonPath" }
 if ($script:BundledFfmpegPath) { Write-Host "- Bundled FFmpeg-bron: $script:BundledFfmpegPath" }
 if ($script:WheelhousePath) { Write-Host "- Lokale wheelhouse: $script:WheelhousePath" }

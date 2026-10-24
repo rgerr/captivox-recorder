@@ -149,11 +149,6 @@ internal static class PreflightCheckService
             return (false, $"Uitschrijven is nog niet geinstalleerd ({string.Join(" en ", missing)} ontbreekt). Voer install-prereqs.ps1 uit in de programmamap; tot die tijd blijven opnames wachten.");
         }
 
-        if (settings.Worker.DiarizationEnabled && !SettingsStore.HasToken())
-        {
-            return (true, "Uitschrijven is klaar voor gebruik. Sprekerherkenning wacht nog op een Hugging Face-token (Instellingen).");
-        }
-
         return (true, "Uitschrijven is klaar voor gebruik.");
     }
 

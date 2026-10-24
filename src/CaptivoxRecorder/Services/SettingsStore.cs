@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Captivox.Recorder.Models;
@@ -8,8 +7,6 @@ namespace Captivox.Recorder.Services;
 internal static class SettingsStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
-    // Het Hugging Face-token staat versleuteld met Windows DPAPI: alleen deze gebruiker op deze pc kan het lezen.
-    private static readonly byte[] HfTokenEntropy = Encoding.UTF8.GetBytes("CaptivoxRecorderFree::HF_TOKEN::v1");
 
     public static readonly IReadOnlyList<(string Code, string Name)> Languages = new[]
     {
@@ -31,9 +28,6 @@ internal static class SettingsStore
 
     public static string GetSettingsPath()
         => Path.Combine(AppRuntime.GetSettingsDirectory(), "application_settings.json");
-
-    public static string GetTokenPath()
-        => Path.Combine(AppRuntime.GetSecretsDirectory(), "hf_token.bin");
 
     public static ApplicationSettings Load()
     {
@@ -101,12 +95,10 @@ internal static class SettingsStore
         settings.Worker.RuntimeMode = "python";
         settings.Worker.Language = Languages.Any(x => x.Code == settings.Worker.Language) ? settings.Worker.Language : "nl";
         settings.Worker.WhisperXModel = Models.Any(x => x.Code == settings.Worker.WhisperXModel) ? settings.Worker.WhisperXModel : "large-v2";
-        settings.Worker.MinSpeakers = settings.Worker.MinSpeakers is > 0 ? Math.Min(settings.Worker.MinSpeakers.Value, 20) : null;
-        settings.Worker.MaxSpeakers = settings.Worker.MaxSpeakers is > 0 ? Math.Min(settings.Worker.MaxSpeakers.Value, 20) : null;
-        if (settings.Worker.MinSpeakers is int min && settings.Worker.MaxSpeakers is int max && max < min)
-        {
-            settings.Worker.MaxSpeakers = min;
-        }
+        // Sprekerherkenning zit niet in de gratis versie.
+        settings.Worker.DiarizationEnabled = false;
+        settings.Worker.MinSpeakers = null;
+        settings.Worker.MaxSpeakers = null;
 
         // De gratis versie bewaart alles; opruimen doet de gebruiker zelf.
         settings.Worker.Retention.Enabled = false;
@@ -151,69 +143,21 @@ internal static class SettingsStore
         }
     }
 
-    public static bool HasToken() => File.Exists(GetTokenPath());
-
-    public static void SaveToken(string token)
-    {
-        if (string.IsNullOrWhiteSpace(token))
-        {
-            throw new InvalidOperationException("Het Hugging Face-token is leeg.");
-        }
-
-        var normalizedToken = token.Trim();
-        var protectedBytes = ProtectedData.Protect(Encoding.UTF8.GetBytes(normalizedToken), HfTokenEntropy, DataProtectionScope.CurrentUser);
-        var tokenPath = GetTokenPath();
-        var tempPath = tokenPath + ".tmp";
-        File.WriteAllBytes(tempPath, protectedBytes);
-        try
-        {
-            if (!string.Equals(LoadTokenFromPath(tempPath), normalizedToken, StringComparison.Ordinal))
-            {
-                throw new InvalidOperationException("Het opgeslagen token kon niet worden teruggelezen.");
-            }
-
-            File.Move(tempPath, tokenPath, overwrite: true);
-        }
-        catch
-        {
-            try { File.Delete(tempPath); } catch { }
-            throw;
-        }
-    }
-
-    public static bool TryLoadToken(out string? token, out string? error)
+    // Versie 1.0.0 kon een Hugging Face-token bewaren voor sprekerherkenning. Dat is niet meer nodig, dus weg ermee.
+    public static void RemoveLegacyToken()
     {
         try
         {
-            var path = GetTokenPath();
-            if (!File.Exists(path))
+            var path = Path.Combine(AppRuntime.GetSecretsDirectory(), "hf_token.bin");
+            if (File.Exists(path))
             {
-                token = null;
-                error = "Geen opgeslagen Hugging Face-token gevonden.";
-                return false;
+                File.Delete(path);
+                AppRuntime.LogMessage("Bewaard Hugging Face-token uit versie 1.0.0 verwijderd; de gratis versie gebruikt het niet meer.");
             }
-
-            token = LoadTokenFromPath(path);
-            error = null;
-            return !string.IsNullOrWhiteSpace(token);
         }
         catch (Exception ex)
         {
-            token = null;
-            error = $"{ex.GetType().Name}: {ex.Message}";
-            return false;
-        }
-    }
-
-    private static string LoadTokenFromPath(string path)
-        => Encoding.UTF8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(path), HfTokenEntropy, DataProtectionScope.CurrentUser));
-
-    public static void DeleteToken()
-    {
-        var path = GetTokenPath();
-        if (File.Exists(path))
-        {
-            File.Delete(path);
+            AppRuntime.LogException("Oud token verwijderen mislukt", ex);
         }
     }
 }
