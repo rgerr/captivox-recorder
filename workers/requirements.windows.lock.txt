@@ -1,0 +1,10 @@
+# Vastgezette Windows-installatiespecificatie voor Captivox Recorder (gratis versie)
+# Python-baseline: 3.10.x
+# Dit is de handmatig bijgehouden pinned baseline. Na een geslaagde Windows-bootstrap kan install-prereqs.ps1 daarnaast een resolved lock wegschrijven naar requirements.windows.realized.lock.txt.
+whisperx==3.7.4
+pyannote.audio==3.3.2
+torch==2.8.0
+torchaudio==2.8.0
+numpy==2.0.2
+pandas==2.2.3
+ffmpeg-python==0.2.0

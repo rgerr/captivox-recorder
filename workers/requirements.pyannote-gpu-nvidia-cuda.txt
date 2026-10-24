@@ -1,0 +1,11 @@
+# Captivox v7.16.0 NVIDIA CUDA GPU-diarization sidecar
+# Gebruik tools/Test-PyannoteGpuDiarizationRuntime.ps1 -Backend nvidia-cuda -Bootstrap.
+--index-url https://download.pytorch.org/whl/cu124
+torch
+torchaudio
+torchvision
+pyannote.audio==3.3.2
+speechbrain>=1.1.0
+omegaconf
+huggingface_hub
+numpy==2.0.2

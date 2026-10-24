@@ -1,0 +1,4 @@
+# Canonieke entrypoint voor de lokale Windows workerstack.
+# Houd install-prereqs.ps1, deze entrypoint en requirements.windows.lock.txt in sync.
+# Wanneer aanwezig krijgt requirements.windows.realized.lock.txt voorrang in install-prereqs.ps1.
+-r requirements.windows.lock.txt

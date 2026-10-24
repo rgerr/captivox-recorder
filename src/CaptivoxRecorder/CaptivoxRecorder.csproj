@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PlatformTarget>x64</PlatformTarget>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AssemblyName>CaptivoxRecorder</AssemblyName>
+    <RootNamespace>Captivox.Recorder</RootNamespace>
+    <AssemblyTitle>Captivox Recorder</AssemblyTitle>
+    <Product>Captivox Recorder</Product>
+    <Copyright>Copyright (c) 2026 rgerr. GPL-3.0-or-later.</Copyright>
+    <ApplicationIcon>Assets\captivox-recorder.ico</ApplicationIcon>
+    <Version>1.0.0</Version>
+    <InformationalVersion>1.0.0</InformationalVersion>
+    <AssemblyVersion>1.0.0</AssemblyVersion>
+    <FileVersion>1.0.0</FileVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\captivox-banner.png" LogicalName="Captivox.Recorder.Assets.captivox-banner.png" />
+    <EmbeddedResource Include="Assets\captivox-logo.png" LogicalName="Captivox.Recorder.Assets.captivox-logo.png" />
+    <EmbeddedResource Include="Assets\captivox-recorder.ico" LogicalName="Captivox.Recorder.Assets.captivox-recorder.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="System.Management" Version="8.0.0" />
+  </ItemGroup>
+</Project>
