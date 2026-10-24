@@ -1006,26 +1006,6 @@ function Configure-CaptivoxSettings([string]$VenvPython, [string]$FFmpegPath, [b
         $changed = $true
     }
 
-    $stableDiarizationModel = if ($worker.PSObject.Properties['stableDiarizationModel']) { [string]$worker.stableDiarizationModel } else { '' }
-    if ([string]::IsNullOrWhiteSpace($stableDiarizationModel) -or $stableDiarizationModel -eq 'pyannote/speaker-diarization-community-1') {
-        Set-ObjectProperty -Target $worker -Name 'stableDiarizationModel' -Value 'pyannote/speaker-diarization-3.1'
-        Add-Summary 'Standaard diarizationmodel gemigreerd naar pyannote/speaker-diarization-3.1.'
-        $changed = $true
-    }
-    $experimentalDiarizationModel = if ($worker.PSObject.Properties['experimentalDiarizationModel']) { [string]$worker.experimentalDiarizationModel } else { '' }
-    if ([string]::IsNullOrWhiteSpace($experimentalDiarizationModel)) {
-        Set-ObjectProperty -Target $worker -Name 'experimentalDiarizationModel' -Value 'pyannote/speaker-diarization-community-1'
-        Add-Summary 'Experimenteel diarizationmodel vastgelegd als pyannote/speaker-diarization-community-1.'
-        $changed = $true
-    }
-
-    $diarizationAcceleration = if ($worker.PSObject.Properties['diarizationAcceleration']) { [string]$worker.diarizationAcceleration } else { '' }
-    if ([string]::IsNullOrWhiteSpace($diarizationAcceleration)) {
-        Set-ObjectProperty -Target $worker -Name 'diarizationAcceleration' -Value 'auto'
-        Add-Summary 'Diarizationversnelling ingesteld op auto: GPU-sidecar wordt alleen gebruikt wanneer die expliciet beschikbaar en gevalideerd is; anders blijft CPU de veilige route.'
-        $changed = $true
-    }
-
     $settingsPath = Get-AppSettingsPath
     $settingsDirectory = Split-Path -Parent $settingsPath
     if (-not (Test-Path -LiteralPath $settingsDirectory)) {

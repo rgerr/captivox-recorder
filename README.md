@@ -4,7 +4,7 @@
 
 **Gratis Windows-programma dat je gesprekken opneemt en ze op je eigen pc uitschrijft.** Captivox neemt tegelijk je microfoon en het geluid van de pc op (Teams, Zoom, Google Meet of een ander programma), en zet het gesprek daarna op de achtergrond om in tekst met [WhisperX](https://github.com/m-bain/whisperX). Er gaat niets naar de cloud.
 
-- Versie: **1.1.0** (oktober 2026)
+- Versie: **1.1.1** (oktober 2026)
 - Licentie: [GPL-3.0](LICENSE)
 - Voor: Windows 10 en 11 (64-bit), Nederlandstalige interface
 
@@ -39,15 +39,15 @@ Meer in [PRIVACY.md](PRIVACY.md).
 
 ## Installeren
 
-1. **Download** `CaptivoxRecorder-1.1.0-setup.exe` onder [Releases](https://github.com/rgerr/captivox-recorder/releases). Controleer desgewenst de SHA-256 met het `.sha256`-bestand ernaast:
+1. **Download** `CaptivoxRecorder-1.1.1-setup.exe` onder [Releases](https://github.com/rgerr/captivox-recorder/releases). Controleer desgewenst de SHA-256 met het `.sha256`-bestand ernaast:
    ```powershell
-   Get-FileHash .\CaptivoxRecorder-1.1.0-setup.exe -Algorithm SHA256
+   Get-FileHash .\CaptivoxRecorder-1.1.1-setup.exe -Algorithm SHA256
    ```
 2. **Installeren**: dubbelklik het bestand. Het programma is niet digitaal ondertekend; Windows SmartScreen kan daarom waarschuwen. Kies dan *Meer informatie* en *Toch uitvoeren*. Beheerdersrechten zijn niet nodig: Captivox komt in `%LOCALAPPDATA%\Programs\CaptivoxRecorderFree`, met een snelkoppeling in het Startmenu.
 3. **Transcriptie-omgeving**: laat aan het eind *Transcriptie-omgeving nu installeren* aangevinkt (eenmalig, 10 tot 30 minuten, ongeveer 1 GB download). Er opent een PowerShell-venster. Ontbreken Python 3.10 of FFmpeg, dan vraagt het of het ze via `winget` mag installeren; antwoord met Enter. Sluit het venster als het klaar is. Later opnieuw of herstellen kan via Startmenu, *Captivox Recorder (gratis)*, *Transcriptie-omgeving installeren of herstellen*. Met een AMD-videokaart voer je daarna eenmalig in PowerShell, in de programmamap, `.\install-prereqs.ps1 -PrepareAmdGpuRuntime` uit.
 4. **Kies je apparaten**: links de microfoon en het apparaat waarop je de anderen hoort (meestal je headset of luidsprekers). Druk op **Opname starten**.
 
-Liever zonder installatie? Download dan `CaptivoxRecorder-1.1.0-win-x64.zip`, pak hem uit in een map waar je zelf mag schrijven, voer in PowerShell in die map `Get-ChildItem -Recurse | Unblock-File` uit en daarna `powershell -NoProfile -ExecutionPolicy Bypass -File .\install-prereqs.ps1`, en start `CaptivoxRecorder.exe`.
+Liever zonder installatie? Download dan `CaptivoxRecorder-1.1.1-win-x64.zip`, pak hem uit in een map waar je zelf mag schrijven, voer in PowerShell in die map `Get-ChildItem -Recurse | Unblock-File` uit en daarna `powershell -NoProfile -ExecutionPolicy Bypass -File .\install-prereqs.ps1`, en start `CaptivoxRecorder.exe`.
 
 Verwijderen gaat via Windows, *Apps*, *Captivox Recorder (gratis versie)*. Je opnames blijven staan; Captivox vraagt of de transcriptie-omgeving en de instellingen ook weg mogen.
 
@@ -119,4 +119,4 @@ De onderdelen van anderen die Captivox gebruikt, staan met hun licenties in [THI
 
 Captivox Recorder is a free (GPL-3.0) Windows app that records your microphone and your PC's audio at the same time (for Teams, Zoom, Meet or any other call), and transcribes the conversation **locally** with WhisperX (no speaker diarization in the free version). Nothing is sent to the cloud; no account and no telemetry. The user interface is in Dutch.
 
-Quick start: download `CaptivoxRecorder-1.1.0-setup.exe` from Releases and run it (no admin rights needed); keep *Transcriptie-omgeving nu installeren* checked at the end to set up the transcription runtime (Python 3.10, WhisperX, FFmpeg). A portable zip is available as well. Build from source with the .NET 8 SDK and Inno Setup 6: `.\build.ps1`.
+Quick start: download `CaptivoxRecorder-1.1.1-setup.exe` from Releases and run it (no admin rights needed); keep *Transcriptie-omgeving nu installeren* checked at the end to set up the transcription runtime (Python 3.10, WhisperX, FFmpeg). A portable zip is available as well. Build from source with the .NET 8 SDK and Inno Setup 6: `.\build.ps1`.

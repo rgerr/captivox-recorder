@@ -18,7 +18,7 @@ Een korte beschrijving.
 
 **Omgeving**
 - Windows-versie: [bijvoorbeeld Windows 11 24H2]
-- Captivox Recorder-versie: [bijvoorbeeld 1.0.0, zie Help, Over]
+- Captivox Recorder-versie: [bijvoorbeeld 1.1.1, zie Help, Over]
 - Videokaart: [NVIDIA, AMD of geen]
 
 **Logboek**

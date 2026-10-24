@@ -1,5 +1,9 @@
 # Wijzigingen
 
+## 1.1.1 (2026-10-24)
+
+- `install-prereqs.ps1` zet geen instellingen voor sprekerherkenning meer en meldt daar ook niets meer over.
+
 ## 1.1.0 (2026-10-24)
 
 - Sprekerherkenning (pyannote) zit niet meer in de gratis versie. Transcripten tonen alleen de tijd per stuk tekst.
