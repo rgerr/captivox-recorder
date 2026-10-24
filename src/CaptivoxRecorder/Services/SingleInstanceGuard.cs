@@ -1,14 +1,13 @@
-namespace Captivox.Recorder.Services;
+namespace LocalCaptureAgent.Services;
 
-// v8.22.1: er mag maar een recorder per Windows-sessie draaien. Op 29 en 30 september 2026 liepen er twee
-// tegelijk: de bewakingstaak startte de recorder na het aanmelden en Windows herstartte enkele minuten later
-// nog een exemplaar (RegisterApplicationRestart). Twee recorders stellen allebei de opnamevraag, draaien
-// allebei een worker en kunnen een melding dubbel tonen.
+// Er mag maar een recorder per Windows-sessie draaien. Zonder deze vergrendeling kan er een tweede exemplaar bij komen,
+// bijvoorbeeld als Windows de recorder na het aanmelden opnieuw start (RegisterApplicationRestart) terwijl hij al draait.
+// Twee recorders stellen allebei de opnamevraag, draaien allebei een worker en kunnen een melding dubbel tonen.
 internal sealed class SingleInstanceGuard : IDisposable
 {
-    internal const string DefaultMutexName = @"Local\CaptivoxRecorderFree.SingleInstance";
-    internal const string DefaultShowName = @"Local\CaptivoxRecorderFree.ShowWindow";
-    internal const string DefaultAckName = @"Local\CaptivoxRecorderFree.ShowWindowAck";
+    internal const string DefaultMutexName = @"Local\" + Branding.InstanceName + ".SingleInstance";
+    internal const string DefaultShowName = @"Local\" + Branding.InstanceName + ".ShowWindow";
+    internal const string DefaultAckName = @"Local\" + Branding.InstanceName + ".ShowWindowAck";
 
     // Hoe lang een tweede start op de bevestiging wacht. Het draaiende exemplaar bevestigt alleen binnen een kortere
     // termijn: een te late bevestiging zou in de semafoor blijven staan en een volgende start ten onrechte geruststellen.

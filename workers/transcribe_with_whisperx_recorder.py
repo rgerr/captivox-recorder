@@ -21,15 +21,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
-
-def captivox_appdata_root() -> str:
-    """De gegevensmap van de gratis Captivox Recorder; CAPTIVOX_APPDATA_ROOT (gezet door de recorder) wint."""
-    explicit = os.environ.get("CAPTIVOX_APPDATA_ROOT")
-    if explicit:
-        return explicit
-    local = os.environ.get("LOCALAPPDATA") or os.path.join(str(Path.home()), "AppData", "Local")
-    return os.path.join(local, "CaptivoxRecorderFree")
-
 def eprint(*args, **kwargs):
     kwargs.setdefault("flush", True)
     print(*args, file=sys.stderr, **kwargs)
@@ -457,448 +448,6 @@ def prepare_diarization_wav_path(input_path: str, ffmpeg_path: str, work_dir: st
     return wav_path
 
 
-def resolve_pyannote_community_cpu_python() -> Optional[str]:
-    """Vind de geisoleerde pyannote.audio 4.x CPU-runtime zonder de hoofdworker te wijzigen."""
-    explicit = os.environ.get("CAPTIVOX_PYANNOTE_COMMUNITY_PYTHON")
-    candidates: List[str] = []
-    if explicit:
-        candidates.append(explicit)
-    local_appdata = os.environ.get("LOCALAPPDATA")
-    if local_appdata:
-        candidates.append(os.path.join(captivox_appdata_root(), "runtime", "pyannote-community", ".venv", "Scripts", "python.exe"))
-    candidates.append(os.path.join(str(Path.home()), "AppData", "Local", "CaptivoxRecorderFree", "runtime", "pyannote-community", ".venv", "Scripts", "python.exe"))
-    candidates.append(os.path.join(str(Path.home()), ".local", "share", "CaptivoxRecorderFree", "runtime", "pyannote-community", ".venv", "bin", "python"))
-    for candidate in candidates:
-        if candidate and os.path.exists(candidate):
-            return candidate
-    return None
-
-
-def get_pyannote_sidecar_timeout_seconds(args) -> int:
-    """Bepaal een harde timeout voor de geisoleerde CPU-sidecar."""
-    raw = os.environ.get("CAPTIVOX_PYANNOTE_SIDECAR_TIMEOUT_SEC")
-    if raw:
-        try:
-            value = int(raw)
-            if value > 0:
-                return value
-        except Exception:
-            pass
-    # CPU-diarization kan op lange sessies tijd kosten. Dit is een noodplafond om
-    # hangende childprocessen te voorkomen, niet een agressieve kwaliteitslimiet.
-    return 6 * 60 * 60
-
-
-def get_pyannote_gpu_sidecar_timeout_seconds(args) -> int:
-    """Bepaal een harde timeout voor experimentele GPU-diarization.
-
-    De GPU-sidecar is versnelling bovenop de bewezen CPU-route. Een hangende
-    GPU-runtime mag de basistranscriptie niet blokkeren; bij timeout volgt CPU
-    fallback. CAPTIVOX_PYANNOTE_GPU_SIDECAR_TIMEOUT_SEC kan dit overrulen.
-    """
-    raw = os.environ.get("CAPTIVOX_PYANNOTE_GPU_SIDECAR_TIMEOUT_SEC")
-    if raw:
-        try:
-            value = int(raw)
-            if value > 0:
-                return value
-        except Exception:
-            pass
-    duration = 0.0
-    try:
-        input_path = getattr(args, "input", "") or ""
-        if input_path and os.path.exists(input_path) and input_path.lower().endswith(".wav"):
-            with wave.open(input_path, "rb") as wav_file:
-                frame_rate = wav_file.getframerate() or 0
-                frames = wav_file.getnframes() or 0
-                if frame_rate > 0:
-                    duration = float(frames) / float(frame_rate)
-    except Exception:
-        duration = 0.0
-    # Korte sessies moeten snel terugvallen; langere sessies krijgen meer budget,
-    # maar nooit uren. CPU fallback blijft de veilige route.
-    if duration > 0:
-        return max(180, min(900, int(duration * 2.0 + 60)))
-    return 180
-
-
-def terminate_process_tree(process: subprocess.Popen) -> None:
-    """Stop een sidecar en eventuele childprocessen best-effort."""
-    try:
-        if os.name == "nt":
-            subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
-        else:
-            process.kill()
-    except Exception:
-        try:
-            process.kill()
-        except Exception:
-            pass
-
-
-GPU_SIDECAR_FAIL_FAST_PATTERNS = [
-    "miopenstatusunknownerror",
-    "hiprtc_error_compilation",
-    "hiprtccompileprogram",
-    "rocrand_xorwow.h",
-    "code object build failed",
-    "failed to compile",
-    "miopen error",
-    "miopenerror",
-]
-
-
-def classify_gpu_sidecar_failure(text: str) -> Optional[str]:
-    lower = (text or "").lower()
-    if "rocrand_xorwow.h" in lower:
-        return "amd_rocm_missing_rocrand_header"
-    if "miopenstatusunknownerror" in lower or "miopen error" in lower or "miopenerror" in lower:
-        return "amd_rocm_miopen_compile_error"
-    if "hiprtc_error_compilation" in lower or "hiprtccompileprogram" in lower:
-        return "amd_rocm_hiprtc_compile_error"
-    if "code object build failed" in lower or "failed to compile" in lower:
-        return "amd_rocm_code_object_build_failed"
-    return None
-
-
-def run_sidecar_process(
-    command: List[str],
-    env: Dict[str, str],
-    cwd: str,
-    timeout_seconds: int,
-    fail_fast_patterns: Optional[List[str]] = None,
-) -> Dict[str, Any]:
-    """Draai de sidecar met timeout, streaming fail-fast en procesboom-opruiming."""
-    creationflags = 0
-    if os.name == "nt" and hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
-        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
-    process = subprocess.Popen(
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        env=env,
-        cwd=cwd,
-        creationflags=creationflags,
-        bufsize=1,
-    )
-    output_queue: "queue.Queue[tuple[str, str]]" = queue.Queue()
-    stdout_lines: List[str] = []
-    stderr_lines: List[str] = []
-
-    def reader(name: str, stream: Any) -> None:
-        try:
-            if stream is None:
-                return
-            for line in iter(stream.readline, ""):
-                output_queue.put((name, line))
-        except Exception as exc:
-            output_queue.put((name, f"[captivox-stream-reader-error] {exc}\n"))
-        finally:
-            try:
-                stream.close()
-            except Exception:
-                pass
-
-    threads = [
-        threading.Thread(target=reader, args=("stdout", process.stdout), daemon=True),
-        threading.Thread(target=reader, args=("stderr", process.stderr), daemon=True),
-    ]
-    for thread in threads:
-        thread.start()
-
-    deadline = time.monotonic() + max(1, int(timeout_seconds or 1))
-    normalized_patterns = [p.lower() for p in (fail_fast_patterns or []) if p]
-
-    def drain_available() -> None:
-        while True:
-            try:
-                name, line = output_queue.get_nowait()
-            except queue.Empty:
-                break
-            if name == "stdout":
-                stdout_lines.append(line)
-            else:
-                stderr_lines.append(line)
-
-    while True:
-        try:
-            name, line = output_queue.get(timeout=0.2)
-            if name == "stdout":
-                stdout_lines.append(line)
-            else:
-                stderr_lines.append(line)
-            combined_line = line.lower()
-            if normalized_patterns and any(pattern in combined_line for pattern in normalized_patterns):
-                terminate_process_tree(process)
-                try:
-                    process.wait(timeout=10)
-                except Exception:
-                    pass
-                drain_available()
-                stderr_text = "".join(stderr_lines)
-                stdout_text = "".join(stdout_lines)
-                reason = classify_gpu_sidecar_failure(stderr_text + "\n" + stdout_text) or "gpu_sidecar_fail_fast_error"
-                return {
-                    "returncode": -2,
-                    "stdout": stdout_text,
-                    "stderr": stderr_text,
-                    "timed_out": False,
-                    "early_failure": True,
-                    "failure_reason": reason,
-                }
-        except queue.Empty:
-            pass
-
-        if process.poll() is not None:
-            for thread in threads:
-                thread.join(timeout=1.0)
-            drain_available()
-            return {
-                "returncode": process.returncode,
-                "stdout": "".join(stdout_lines),
-                "stderr": "".join(stderr_lines),
-                "timed_out": False,
-                "early_failure": False,
-                "failure_reason": None,
-            }
-
-        if time.monotonic() >= deadline:
-            terminate_process_tree(process)
-            try:
-                process.wait(timeout=10)
-            except Exception:
-                pass
-            for thread in threads:
-                thread.join(timeout=1.0)
-            drain_available()
-            return {
-                "returncode": -1,
-                "stdout": "".join(stdout_lines),
-                "stderr": "".join(stderr_lines) or f"pyannote sidecar timeout na {timeout_seconds} seconden",
-                "timed_out": True,
-                "early_failure": False,
-                "failure_reason": "sidecar_timeout",
-            }
-
-
-def run_pyannote_community_cpu_sidecar(input_path: str, args, hf_token: str, work_dir: str) -> Dict[str, Any]:
-    """Draai community-1 in een geisoleerde CPU-runtime met pyannote.audio 4.x."""
-    sidecar_python = resolve_pyannote_community_cpu_python()
-    sidecar_script = str(Path(__file__).with_name("diarize_with_pyannote_community.py"))
-    if not sidecar_python:
-        raise RuntimeError("pyannote community-1 CPU-runtime ontbreekt. Run install-prereqs.ps1 om de geisoleerde diarization-runtime te installeren.")
-    if not os.path.exists(sidecar_script):
-        raise RuntimeError(f"pyannote community-1 sidecarscript ontbreekt: {sidecar_script}")
-    wav_path = prepare_diarization_wav_path(input_path, getattr(args, "ffmpeg_path", "ffmpeg"), work_dir)
-    output_path = os.path.join(work_dir, "pyannote_community_cpu_segments.json")
-    command = [
-        sidecar_python,
-        sidecar_script,
-        "--input-wav", wav_path,
-        "--output-json", output_path,
-        "--model", PYANNOTE_COMMUNITY_1_MODEL,
-    ]
-    if getattr(args, "min_speakers", 0) and int(args.min_speakers) > 0:
-        command += ["--min-speakers", str(int(args.min_speakers))]
-    if getattr(args, "max_speakers", 0) and int(args.max_speakers) > 0:
-        command += ["--max-speakers", str(int(args.max_speakers))]
-    env = os.environ.copy()
-    env["HF_TOKEN"] = hf_token
-    env["HUGGINGFACE_TOKEN"] = hf_token
-    env["PYANNOTE_METRICS_ENABLED"] = "0"
-    if getattr(args, "ffmpeg_path", None):
-        env["FFMPEG_PATH"] = str(args.ffmpeg_path)
-    timeout_seconds = get_pyannote_sidecar_timeout_seconds(args)
-    result = run_sidecar_process(command, env=env, cwd=str(Path(__file__).parent), timeout_seconds=timeout_seconds)
-    if result.get("stdout"):
-        eprint(str(result.get("stdout")).strip())
-    if result.get("stderr"):
-        eprint(str(result.get("stderr")).strip())
-    if result.get("timed_out"):
-        raise RuntimeError(f"pyannote community-1 CPU-sidecar timeout na {timeout_seconds} seconden")
-    if int(result.get("returncode") or 0) != 0:
-        raise RuntimeError(f"pyannote community-1 CPU-sidecar faalde met exitcode {result.get('returncode')}: {result.get('stderr') or result.get('stdout')}")
-    if not os.path.exists(output_path):
-        raise RuntimeError("pyannote community-1 CPU-sidecar leverde geen segmentbestand op.")
-    with open(output_path, "r", encoding="utf-8") as handle:
-        payload = json.load(handle)
-    if payload.get("status") != "completed":
-        raise RuntimeError(payload.get("warning") or "pyannote community-1 CPU-sidecar eindigde niet succesvol.")
-    return payload
-
-
-def resolve_pyannote_gpu_sidecar_python(backend: Optional[str] = None) -> Optional[str]:
-    """Vind de geisoleerde pyannote GPU-runtime zonder de hoofdworker te wijzigen."""
-    explicit = os.environ.get("CAPTIVOX_PYANNOTE_GPU_PYTHON")
-    candidates: List[str] = []
-    if explicit:
-        candidates.append(explicit)
-    backend_folder = "pyannote-gpu-amd-rocm" if backend == "amd-rocm" else ("pyannote-gpu-nvidia-cuda" if backend == "nvidia-cuda" else None)
-    local_appdata = os.environ.get("LOCALAPPDATA")
-    if local_appdata:
-        if backend_folder:
-            candidates.append(os.path.join(captivox_appdata_root(), "runtime", backend_folder, ".venv", "Scripts", "python.exe"))
-        candidates.append(os.path.join(captivox_appdata_root(), "runtime", "pyannote-gpu", ".venv", "Scripts", "python.exe"))
-        candidates.append(os.path.join(captivox_appdata_root(), "runtime", "pyannote-amd-rocm", ".venv", "Scripts", "python.exe"))
-    home = str(Path.home())
-    if backend_folder:
-        candidates.append(os.path.join(home, "AppData", "Local", "CaptivoxRecorderFree", "runtime", backend_folder, ".venv", "Scripts", "python.exe"))
-    candidates.append(os.path.join(home, "AppData", "Local", "CaptivoxRecorderFree", "runtime", "pyannote-gpu", ".venv", "Scripts", "python.exe"))
-    candidates.append(os.path.join(home, ".local", "share", "CaptivoxRecorderFree", "runtime", "pyannote-gpu", ".venv", "bin", "python"))
-    for candidate in candidates:
-        if candidate and os.path.exists(candidate):
-            return candidate
-    return None
-
-
-def get_requested_gpu_sidecar_backend(args, requested_acceleration: str) -> Optional[str]:
-    # v7.35.0: auto mag bij AMD/NVIDIA-profielen de geisoleerde GPU-sidecar
-    # proberen. Die sidecar heeft een harde timeout; daarna volgt CPU fallback.
-    if requested_acceleration == DIARIZATION_ACCELERATION_AMD_ROCM:
-        return "amd-rocm"
-    if requested_acceleration == DIARIZATION_ACCELERATION_NVIDIA_CUDA:
-        return "nvidia-cuda"
-    if requested_acceleration == DIARIZATION_ACCELERATION_AUTO:
-        profile = normalize_transcription_profile(getattr(args, "transcription_profile", "auto"))
-        if profile == "amd-gpu":
-            return "amd-rocm"
-        if profile == "nvidia-cuda":
-            return "nvidia-cuda"
-    return None
-
-
-def run_pyannote_gpu_sidecar(input_path: str, args, hf_token: str, work_dir: str, model_id: str, requested_acceleration: str) -> Dict[str, Any]:
-    """Draai pyannote 3.1 via een geisoleerde ROCm/CUDA-runtime. Geen token via arguments."""
-    backend = get_requested_gpu_sidecar_backend(args, requested_acceleration)
-    sidecar_python = resolve_pyannote_gpu_sidecar_python(backend)
-    explicit_request = requested_acceleration in {DIARIZATION_ACCELERATION_AMD_ROCM, DIARIZATION_ACCELERATION_NVIDIA_CUDA}
-    if not backend:
-        return {"skipped": True, "reason": "diarization_acceleration_cpu_or_no_matching_profile", "explicit_request": explicit_request}
-    if not sidecar_python:
-        return {"skipped": True, "reason": "pyannote_gpu_sidecar_python_not_found", "backend": backend, "explicit_request": explicit_request}
-
-    sidecar_script = str(Path(__file__).with_name("diarize_with_pyannote_gpu.py"))
-    if not os.path.exists(sidecar_script):
-        return {"skipped": True, "reason": f"pyannote GPU-sidecarscript ontbreekt: {sidecar_script}", "backend": backend, "explicit_request": explicit_request}
-
-    wav_path = prepare_diarization_wav_path(input_path, getattr(args, "ffmpeg_path", "ffmpeg"), work_dir)
-    output_path = os.path.join(work_dir, "pyannote_gpu_segments.json")
-    command = [
-        sidecar_python,
-        sidecar_script,
-        "--input-wav", wav_path,
-        "--output-json", output_path,
-        "--model", model_id,
-        "--acceleration", backend,
-    ]
-    if getattr(args, "min_speakers", 0) and int(args.min_speakers) > 0:
-        command += ["--min-speakers", str(int(args.min_speakers))]
-    if getattr(args, "max_speakers", 0) and int(args.max_speakers) > 0:
-        command += ["--max-speakers", str(int(args.max_speakers))]
-
-    env = os.environ.copy()
-    env["HF_TOKEN"] = hf_token
-    env["HUGGINGFACE_TOKEN"] = hf_token
-    env["PYANNOTE_METRICS_ENABLED"] = "0"
-    timeout_seconds = get_pyannote_gpu_sidecar_timeout_seconds(args)
-    result = run_sidecar_process(
-        command,
-        env=env,
-        cwd=str(Path(__file__).parent),
-        timeout_seconds=timeout_seconds,
-        fail_fast_patterns=GPU_SIDECAR_FAIL_FAST_PATTERNS,
-    )
-    if result.get("stdout"):
-        eprint(str(result.get("stdout")).strip())
-    if result.get("stderr"):
-        eprint(str(result.get("stderr")).strip())
-    if result.get("early_failure"):
-        reason = str(result.get("failure_reason") or "gpu_sidecar_fail_fast_error")
-        raise RuntimeError(f"{reason}: pyannote GPU-sidecar direct afgebroken; CPU fallback wordt gestart")
-    if result.get("timed_out"):
-        raise RuntimeError(f"pyannote GPU-sidecar timeout na {timeout_seconds} seconden")
-    if not os.path.exists(output_path):
-        raise RuntimeError(f"pyannote GPU-sidecar leverde geen segmentbestand op. exitcode={result.get('returncode')}: {result.get('stderr') or result.get('stdout')}")
-    with open(output_path, "r", encoding="utf-8") as handle:
-        payload = json.load(handle)
-    if int(result.get("returncode") or 0) != 0 or payload.get("status") != "completed":
-        raise RuntimeError(payload.get("warning") or f"pyannote GPU-sidecar faalde met exitcode {result.get('returncode')}: {result.get('stderr') or result.get('stdout')}")
-    payload["sidecar_python"] = sidecar_python
-    payload["requested_backend"] = backend
-    payload["explicit_request"] = explicit_request
-    return payload
-
-
-def get_pyannote_cpu_fallback_timeout_seconds(args) -> int:
-    """Harde timeout voor CPU fallback zodat diarization nooit urenlang kan hangen."""
-    raw = os.environ.get("CAPTIVOX_PYANNOTE_CPU_FALLBACK_TIMEOUT_SEC")
-    if raw:
-        try:
-            value = int(raw)
-            if value > 0:
-                return value
-        except Exception:
-            pass
-    duration = 0.0
-    try:
-        input_path = getattr(args, "input", "") or ""
-        if input_path and os.path.exists(input_path) and input_path.lower().endswith(".wav"):
-            with wave.open(input_path, "rb") as wav_file:
-                frame_rate = wav_file.getframerate() or 0
-                frames = wav_file.getnframes() or 0
-                if frame_rate > 0:
-                    duration = float(frames) / float(frame_rate)
-    except Exception:
-        duration = 0.0
-    if duration > 0:
-        return max(120, min(900, int(duration * 3.0 + 60)))
-    return 300
-
-
-def run_pyannote_cpu_fallback_sidecar(input_path: str, args, hf_token: str, work_dir: str, model_id: str) -> Dict[str, Any]:
-    """Draai pyannote 3.1 CPU fallback in een childprocess met harde timeout."""
-    sidecar_script = str(Path(__file__).with_name("diarize_with_pyannote_gpu.py"))
-    if not os.path.exists(sidecar_script):
-        raise RuntimeError(f"pyannote CPU-fallbacksidecar ontbreekt: {sidecar_script}")
-    wav_path = prepare_diarization_wav_path(input_path, getattr(args, "ffmpeg_path", "ffmpeg"), work_dir)
-    output_path = os.path.join(work_dir, "pyannote_cpu_fallback_segments.json")
-    command = [sys.executable, sidecar_script, "--input-wav", wav_path, "--output-json", output_path, "--model", model_id, "--acceleration", "cpu"]
-    if getattr(args, "min_speakers", 0) and int(args.min_speakers) > 0:
-        command += ["--min-speakers", str(int(args.min_speakers))]
-    if getattr(args, "max_speakers", 0) and int(args.max_speakers) > 0:
-        command += ["--max-speakers", str(int(args.max_speakers))]
-    env = os.environ.copy()
-    env["HF_TOKEN"] = hf_token
-    env["HUGGINGFACE_TOKEN"] = hf_token
-    env["PYANNOTE_METRICS_ENABLED"] = "0"
-    if getattr(args, "ffmpeg_path", None):
-        env["FFMPEG_PATH"] = str(args.ffmpeg_path)
-    timeout_seconds = get_pyannote_cpu_fallback_timeout_seconds(args)
-    result = run_sidecar_process(command, env=env, cwd=str(Path(__file__).parent), timeout_seconds=timeout_seconds)
-    if result.get("stdout"):
-        eprint(str(result.get("stdout")).strip())
-    if result.get("stderr"):
-        eprint(str(result.get("stderr")).strip())
-    if result.get("timed_out"):
-        raise RuntimeError(f"pyannote CPU-fallbacksidecar timeout na {timeout_seconds} seconden")
-    if not os.path.exists(output_path):
-        raise RuntimeError(f"pyannote CPU-fallbacksidecar leverde geen segmentbestand op. exitcode={result.get('returncode')}: {result.get('stderr') or result.get('stdout')}")
-    with open(output_path, "r", encoding="utf-8") as handle:
-        payload = json.load(handle)
-    return_code = int(result.get("returncode") or 0)
-    if return_code not in {0, 2}:
-        raise RuntimeError(payload.get("warning") or f"pyannote CPU-fallbacksidecar faalde met exitcode {return_code}: {result.get('stderr') or result.get('stdout')}")
-    payload["sidecar_python"] = sys.executable
-    payload["requested_backend"] = "cpu"
-    return payload
-
-def apply_gpu_sidecar_payload_to_transcript(serializable: Dict[str, Any], payload: Dict[str, Any]):
-    import pandas as pd
-    diarization_segments = payload.get("diarization_segments") or []
-    diarize_df = pd.DataFrame(diarization_segments, columns=["start", "end", "speaker"])
-    assignment = assign_segment_speakers_by_overlap(serializable, diarize_df)
-    return assignment
 
 
 def apply_pyannote_diarization_postprocess(serializable: Dict[str, Any], args, hf_token: Optional[str], progress, begin_phase, end_phase, runtime_root: str) -> Dict[str, Any]:
@@ -925,190 +474,13 @@ def apply_pyannote_diarization_postprocess(serializable: Dict[str, Any], args, h
     gpu_sidecar_attempted: bool = False
     gpu_phase_started: bool = False
 
-    if requested_diarization_model_id != PYANNOTE_COMMUNITY_1_MODEL and requested_diarization_acceleration in {DIARIZATION_ACCELERATION_AUTO, DIARIZATION_ACCELERATION_AMD_ROCM, DIARIZATION_ACCELERATION_NVIDIA_CUDA}:
-        try:
-            begin_phase("diarization")
-            gpu_phase_started = True
-            gpu_payload = run_pyannote_gpu_sidecar(args.input, args, hf_token, work_dir, PYANNOTE_MAINWORKER_CPU_MODEL, requested_diarization_acceleration)
-            if gpu_payload.get("skipped"):
-                end_phase("diarization")
-                gpu_phase_started = False
-                gpu_sidecar_note = gpu_payload
-                if gpu_payload.get("explicit_request"):
-                    gpu_sidecar_failure_reason = str(gpu_payload.get("reason") or "pyannote GPU-sidecar overgeslagen")
-                    gpu_sidecar_attempted = True
-                    eprint(f"WARN: pyannote GPU-diarization expliciet gevraagd maar sidecar niet bruikbaar: {gpu_sidecar_failure_reason}")
-                else:
-                    eprint(f"INFO: pyannote GPU-diarization auto overgeslagen: {gpu_payload.get('reason')}; CPU-route blijft bedoeld.")
-            else:
-                gpu_sidecar_attempted = True
-                assignment = apply_gpu_sidecar_payload_to_transcript(serializable, gpu_payload)
-                end_phase("diarization")
-                gpu_phase_started = False
-                applied = int(assignment.get("assigned_segments") or 0) > 0
-                effective_acceleration = gpu_payload.get("effective_acceleration") or ("amd-rocm" if gpu_payload.get("gpu_backend") == "rocm" else "nvidia-cuda")
-                return {
-                    "status": "completed" if applied else "no_overlap",
-                    "applied": applied,
-                    "model": PYANNOTE_MAINWORKER_CPU_MODEL,
-                    "warning": None if applied else "GPU-diarization leverde segmenten op, maar geen overlap met transcriptsegmenten",
-                    "engine": "pyannote-gpu-sidecar",
-                    "device": "cuda",
-                    "gpu_backend": gpu_payload.get("gpu_backend"),
-                    "fallback_active": False,
-                    "fallback_reason": None,
-                    "execution_mode": "gpu_mainworker",
-                    "requested_model": requested_diarization_model_id, "effective_model": PYANNOTE_MAINWORKER_CPU_MODEL,
-                    "model_compatibility_fallback_active": False, "model_compatibility_fallback_reason": None,
-                    "pyannote_audio_version": gpu_payload.get("pyannote_audio_version"),
-                    "requested_acceleration": requested_diarization_acceleration,
-                    "effective_acceleration": effective_acceleration,
-                    "gpu_available": True,
-                    "gpu_validated": True,
-                    "gpu_device_name": gpu_payload.get("device_name"),
-                    "rocm_lstm_dropout_patch_applied": gpu_payload.get("rocm_lstm_dropout_patch_applied"),
-                    "rocm_lstm_modules_patched": gpu_payload.get("rocm_lstm_modules_patched"),
-                    "rocm_lstm_dropout_original_values": gpu_payload.get("rocm_lstm_dropout_original_values"),
-                    "rocm_lstm_dropout_patch_warning": gpu_payload.get("rocm_lstm_dropout_patch_warning"),
-                    "gpu_inference_smoketest_ok": gpu_payload.get("gpu_inference_smoketest_ok"),
-                    "gpu_inference_smoketest_warning": gpu_payload.get("gpu_inference_smoketest_warning"),
-                    "runtime_python": gpu_payload.get("sidecar_python"),
-                    "runtime_torch": gpu_payload.get("torch_version"),
-                    "runtime_torchaudio": gpu_payload.get("torchaudio_version"),
-                    "runtime_torch_cuda": gpu_payload.get("torch_cuda_version"),
-                    "runtime_torch_hip": gpu_payload.get("torch_hip_version"),
-                    "assigned_segments": int(assignment.get("assigned_segments") or 0),
-                    "speaker_count": int(assignment.get("speaker_count") or 0),
-                }
-        except Exception as gpu_exc:
-            if gpu_phase_started:
-                try:
-                    end_phase("diarization")
-                except Exception:
-                    pass
-                gpu_phase_started = False
-            gpu_sidecar_attempted = True
-            gpu_sidecar_failure_reason = format_diarization_exception(gpu_exc)
-            eprint(f"WARN: pyannote GPU-sidecar niet bruikbaar; CPU fallback wordt geprobeerd: {gpu_sidecar_failure_reason}")
 
-    if requested_diarization_model_id == PYANNOTE_COMMUNITY_1_MODEL:
-        try:
-            begin_phase("diarization")
-            sidecar_payload = run_pyannote_community_cpu_sidecar(args.input, args, hf_token, work_dir)
-            import pandas as pd
-            diarization_segments = sidecar_payload.get("diarization_segments") or []
-            diarize_df = pd.DataFrame(diarization_segments, columns=["start", "end", "speaker"])
-            end_phase("diarization")
-            if diarize_df.empty:
-                return {
-                    "status": "empty", "applied": False, "model": PYANNOTE_COMMUNITY_1_MODEL,
-                    "warning": "community-1 sidecar gaf geen speakersegmenten terug", "engine": "pyannote-community-sidecar",
-                    "device": "cpu", "gpu_backend": None,
-                    "fallback_active": False, "fallback_reason": None,
-                    "execution_mode": "intended_cpu_sidecar",
-                    "requested_model": requested_diarization_model_id, "effective_model": PYANNOTE_COMMUNITY_1_MODEL,
-                    "model_compatibility_fallback_active": False, "model_compatibility_fallback_reason": None,
-                    "pyannote_audio_version": sidecar_payload.get("pyannote_audio_version"),
-                    "assigned_segments": 0, "speaker_count": 0,
-                }
-            assignment = assign_segment_speakers_by_overlap(serializable, diarize_df)
-            applied = int(assignment.get("assigned_segments") or 0) > 0
-            return {
-                "status": "completed" if applied else "no_overlap",
-                "applied": applied,
-                "model": PYANNOTE_COMMUNITY_1_MODEL,
-                "warning": None if applied else "community-1 sidecar leverde segmenten op, maar geen overlap met transcriptsegmenten",
-                "engine": "pyannote-community-sidecar",
-                "device": "cpu",
-                "gpu_backend": None,
-                "fallback_active": False,
-                "fallback_reason": None,
-                "execution_mode": "intended_cpu_sidecar",
-                "requested_model": requested_diarization_model_id, "effective_model": PYANNOTE_COMMUNITY_1_MODEL,
-                "model_compatibility_fallback_active": False, "model_compatibility_fallback_reason": None,
-                "pyannote_audio_version": sidecar_payload.get("pyannote_audio_version"),
-                "assigned_segments": int(assignment.get("assigned_segments") or 0),
-                "speaker_count": int(assignment.get("speaker_count") or 0),
-            }
-        except Exception as sidecar_exc:
-            try:
-                end_phase("diarization")
-            except Exception:
-                pass
-            eprint(f"WARN: community-1 CPU-sidecar niet bruikbaar; fallback naar hoofdworker/3.1 wordt geprobeerd: {format_diarization_exception(sidecar_exc)}")
 
     model_resolution = resolve_diarization_model_for_runtime(requested_diarization_model_id)
     diarization_model_id = model_resolution["effective_model"]
     compatibility_fallback_active = bool(model_resolution.get("compatibility_fallback_active"))
     compatibility_fallback_reason = model_resolution.get("compatibility_fallback_reason")
 
-    if requested_diarization_model_id != PYANNOTE_COMMUNITY_1_MODEL and diarization_model_id == PYANNOTE_MAINWORKER_CPU_MODEL:
-        try:
-            begin_phase("diarization")
-            cpu_payload = run_pyannote_cpu_fallback_sidecar(args.input, args, hf_token, work_dir, diarization_model_id)
-            import pandas as pd
-            diarization_segments = cpu_payload.get("diarization_segments") or []
-            diarize_df = pd.DataFrame(diarization_segments, columns=["start", "end", "speaker"])
-            end_phase("diarization")
-            fallback_after_gpu = bool(gpu_sidecar_attempted and gpu_sidecar_failure_reason)
-            if diarize_df.empty:
-                return {
-                    "status": "empty", "applied": False, "model": diarization_model_id,
-                    "warning": "CPU fallback-sidecar gaf geen speakersegmenten terug", "engine": "pyannote-cpu-sidecar",
-                    "device": "cpu", "gpu_backend": None,
-                    "fallback_active": fallback_after_gpu, "fallback_reason": gpu_sidecar_failure_reason,
-                    "execution_mode": "cpu_fallback_after_gpu_request" if fallback_after_gpu else "intended_cpu_sidecar",
-                    "requested_model": requested_diarization_model_id, "effective_model": diarization_model_id,
-                    "model_compatibility_fallback_active": compatibility_fallback_active, "model_compatibility_fallback_reason": compatibility_fallback_reason,
-                    "pyannote_audio_version": cpu_payload.get("pyannote_audio_version"),
-                    "requested_acceleration": requested_diarization_acceleration,
-                    "effective_acceleration": "cpu",
-                    "gpu_available": bool(gpu_sidecar_attempted), "gpu_validated": False,
-                    "runtime_python": cpu_payload.get("sidecar_python"), "runtime_torch": cpu_payload.get("torch_version"),
-                    "runtime_torchaudio": cpu_payload.get("torchaudio_version"), "runtime_torch_cuda": cpu_payload.get("torch_cuda_version"),
-                    "runtime_torch_hip": cpu_payload.get("torch_hip_version"),
-                    "assigned_segments": 0, "speaker_count": 0,
-                }
-            assignment = assign_segment_speakers_by_overlap(serializable, diarize_df)
-            applied = int(assignment.get("assigned_segments") or 0) > 0
-            return {
-                "status": "completed" if applied else "no_overlap", "applied": applied, "model": diarization_model_id,
-                "warning": None if applied else "CPU fallback-sidecar leverde segmenten op, maar geen overlap met transcriptsegmenten",
-                "engine": "pyannote-cpu-sidecar", "device": "cpu", "gpu_backend": None,
-                "fallback_active": fallback_after_gpu, "fallback_reason": gpu_sidecar_failure_reason,
-                "execution_mode": "cpu_fallback_after_gpu_request" if fallback_after_gpu else "intended_cpu_sidecar",
-                "requested_model": requested_diarization_model_id, "effective_model": diarization_model_id,
-                "model_compatibility_fallback_active": compatibility_fallback_active, "model_compatibility_fallback_reason": compatibility_fallback_reason,
-                "pyannote_audio_version": cpu_payload.get("pyannote_audio_version"),
-                "requested_acceleration": requested_diarization_acceleration,
-                "effective_acceleration": "cpu",
-                "gpu_available": bool(gpu_sidecar_attempted), "gpu_validated": False,
-                "runtime_python": cpu_payload.get("sidecar_python"), "runtime_torch": cpu_payload.get("torch_version"),
-                "runtime_torchaudio": cpu_payload.get("torchaudio_version"), "runtime_torch_cuda": cpu_payload.get("torch_cuda_version"),
-                "runtime_torch_hip": cpu_payload.get("torch_hip_version"),
-                "assigned_segments": int(assignment.get("assigned_segments") or 0), "speaker_count": int(assignment.get("speaker_count") or 0),
-            }
-        except Exception as cpu_sidecar_exc:
-            try:
-                end_phase("diarization")
-            except Exception:
-                pass
-            reason = format_diarization_exception(cpu_sidecar_exc)
-            return {
-                "status": "timeout" if "timeout" in reason.lower() else "failed", "applied": False, "model": diarization_model_id,
-                "warning": reason, "engine": "pyannote-cpu-sidecar", "device": "cpu", "gpu_backend": None,
-                "fallback_active": bool(gpu_sidecar_attempted and gpu_sidecar_failure_reason),
-                "fallback_reason": ((gpu_sidecar_failure_reason + " | ") if gpu_sidecar_failure_reason else "") + reason,
-                "execution_mode": "cpu_fallback_after_gpu_request" if gpu_sidecar_attempted else "intended_cpu_sidecar",
-                "requested_model": requested_diarization_model_id, "effective_model": diarization_model_id,
-                "model_compatibility_fallback_active": compatibility_fallback_active, "model_compatibility_fallback_reason": compatibility_fallback_reason,
-                "pyannote_audio_version": model_resolution.get("pyannote_audio_version"),
-                "requested_acceleration": requested_diarization_acceleration, "effective_acceleration": "cpu",
-                "gpu_available": bool(gpu_sidecar_attempted), "gpu_validated": False,
-                "runtime_python": sys.executable, "runtime_torch": package_version("torch"), "runtime_torchaudio": package_version("torchaudio"),
-                "runtime_torch_cuda": None, "runtime_torch_hip": None,
-                "assigned_segments": 0, "speaker_count": 0,
-            }
 
     import torch
     configure_torch_checkpoint_compatibility(torch)
@@ -1389,9 +761,9 @@ def resolve_amd_runtime_manifest_from_model_hint(model_hint: str) -> Dict[str, A
                 roots.append(os.path.dirname(os.path.dirname(abs_hint)))
             else:
                 roots.append(os.path.dirname(abs_hint))
-        local = os.environ.get("LOCALAPPDATA")
+        local = os.environ.get("CAPTIVOX_WORKER_DATA_ROOT")
         if local:
-            roots.append(os.path.join(captivox_appdata_root(), "runtime", "whispercpp"))
+            roots.append(os.path.join(local, "runtime", "whispercpp"))
         seen = set()
         for root in roots:
             root = os.path.abspath(root)
@@ -1418,9 +790,9 @@ def resolve_whispercpp_model(args) -> str:
     if selected and os.path.exists(selected):
         return selected
     try:
-        local = os.environ.get("LOCALAPPDATA")
+        local = os.environ.get("CAPTIVOX_WORKER_DATA_ROOT")
         if local:
-            q5 = os.path.join(captivox_appdata_root(), "runtime", "whispercpp", "models", "ggml-large-v3-turbo-q5_0.bin")
+            q5 = os.path.join(local, "runtime", "whispercpp", "models", "ggml-large-v3-turbo-q5_0.bin")
             if os.path.exists(q5):
                 return q5
     except Exception:
@@ -1531,7 +903,7 @@ def build_ffmpeg_whisper_probe(args) -> Dict[str, Any]:
         probe["reason"] = "FFmpeg whisper-filter is aanwezig, maar use_gpu ontbreekt; GPU-gebruik kan niet betrouwbaar worden afgedwongen."
         return probe
     probe["available"] = True
-    probe["reason"] = "FFmpeg whisper-filter met use_gpu is beschikbaar. Dit is de primaire AMD GPU-route in v7.35.0; self-test valideert model en CoopMat-instellingen."
+    probe["reason"] = "FFmpeg whisper-filter met use_gpu is beschikbaar. Dit is de primaire AMD GPU-route; self-test valideert model en CoopMat-instellingen."
     return probe
 
 
@@ -1983,7 +1355,7 @@ def build_whispercpp_command(args, wav_path: str, output_base: str) -> List[str]
     help_text = get_whispercpp_help_text(exe)
 
     # AMD/Vulkan-safe defaults, maar alleen wanneer de gekozen whisper.cpp-build
-    # deze flags ondersteunt. v7.35.0 behoudt de runtime standaard op een stabiele
+    # deze flags ondersteunt. De runtime blijft standaard op een stabiele
     # whisper.cpp-ref; oudere CLI's mogen niet met unsupported flags worden gestart.
     if help_mentions_flag(help_text, "--no-flash-attn"):
         command.append("--no-flash-attn")
@@ -2269,7 +1641,7 @@ def build_runtime_backend_probe(torch_module: Any, args=None) -> Dict[str, Any]:
     amd_runtime_available = bool(torch_runtime.get("amd_runtime")) or (hip_available and bool(ct2_runtime.get("ct2_cuda_available")))
     amd_gpu_available = bool(ffmpeg_whisper_runtime.get("available")) or bool(whispercpp_runtime.get("available"))
     return {
-        "probe_version": "v7.35.0",
+        "probe_version": "2",
         "torch": torch_runtime,
         "ctranslate2": ct2_runtime,
         "ffmpeg_whisper": ffmpeg_whisper_runtime,
@@ -2279,7 +1651,7 @@ def build_runtime_backend_probe(torch_module: Any, args=None) -> Dict[str, Any]:
         "amd_ffmpeg_whisper_available": bool(ffmpeg_whisper_runtime.get("available")),
         "amd_whispercpp_vulkan_available": bool(whispercpp_runtime.get("available")),
         "gpu_runtime_available": bool(torch_runtime.get("cuda_available")) or amd_gpu_available or bool(ct2_runtime.get("ct2_cuda_device_count") or 0) > 0,
-        "note": "NVIDIA gebruikt WhisperX/CTranslate2/CUDA. AMD gebruikt in v7.35.0 primair FFmpeg Whisper filter met use_gpu=true, gevalideerd quantized model en CoopMat-safe runtime-instellingen; speaker diarization probeert bij AMD/NVIDIA auto eerst de geisoleerde GPU-sidecar en valt bij timeout of fout gecontroleerd terug op CPU-sidecar.",
+        "note": "NVIDIA gebruikt WhisperX/CTranslate2/CUDA. AMD gebruikt primair FFmpeg Whisper filter met use_gpu=true, gevalideerd quantized model en CoopMat-safe runtime-instellingen; speaker diarization probeert bij AMD/NVIDIA auto eerst de geisoleerde GPU-sidecar en valt bij timeout of fout gecontroleerd terug op CPU-sidecar.",
     }
 
 def write_runtime_backend_probe(args, probe: Dict[str, Any]) -> None:
@@ -2993,6 +2365,11 @@ def main() -> int:
             else:
                 eprint(f"WARN: AMD-profiel geselecteerd, maar geen AMD GPU-engine is beschikbaar: ffmpeg={ffmpeg_probe.get('reason') if isinstance(ffmpeg_probe, dict) else 'geen probe'}; whispercpp={whispercpp_probe.get('reason') if isinstance(whispercpp_probe, dict) else 'geen probe'}")
 
+        # Geen AMD-engine beschikbaar of gelukt: WhisperX op de processor met het ingestelde model, niet met de
+        # plaatsnaam van de AMD-route (die kent WhisperX niet).
+        if args.model in ("ffmpeg-whisper-gpu", "whispercpp-vulkan"):
+            args.model = (os.environ.get("CAPTIVOX_WHISPERX_MODEL") or "").strip() or "large-v2"
+            eprint(f"INFO: AMD-route niet gebruikt; WhisperX-model voor de terugval: {args.model}")
         begin_phase("dependency_imports")
         import numpy as np
         import pandas as pd  # noqa: F401

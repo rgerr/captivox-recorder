@@ -1,9 +1,9 @@
-namespace Captivox.Recorder.Models;
+namespace LocalCaptureAgent.Models;
 
 public sealed class AppOptions
 {
     public string Command { get; init; } = "record";
-    public string OutputRoot { get; init; } = UiSettings.DefaultOutputRoot;
+    public string OutputRoot { get; init; } = Branding.DefaultRecordingsRoot;
     public string? MicDeviceId { get; init; }
     public string? SystemDeviceId { get; init; }
     public int OutputSampleRate { get; init; } = 16000;
@@ -73,7 +73,7 @@ public sealed class AppOptions
         return new AppOptions
         {
             Command = command,
-            OutputRoot = Get(dict, "output-root", UiSettings.DefaultOutputRoot),
+            OutputRoot = Get(dict, "output-root", Branding.DefaultRecordingsRoot),
             MicDeviceId = GetOptional(dict, "mic-device-id"),
             SystemDeviceId = GetOptional(dict, "system-device-id"),
             OutputSampleRate = GetInt(dict, "output-sample-rate", 16000),

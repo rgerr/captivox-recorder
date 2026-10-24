@@ -1,8 +1,8 @@
-using Captivox.Recorder.Models;
+using LocalCaptureAgent.Models;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
 
-namespace Captivox.Recorder.Services;
+namespace LocalCaptureAgent.Services;
 
 public static class OfflineMixer
 {
@@ -25,6 +25,7 @@ public static class OfflineMixer
         var targetLength = Math.Max(mic.Length, system.Length);
         if (mic.Length != targetLength) Array.Resize(ref mic, targetLength);
         if (system.Length != targetLength) Array.Resize(ref system, targetLength);
+
 
         var windowSamples = Math.Max(1, (int)Math.Round(effectiveOptions.OutputSampleRate * (effectiveOptions.AnalysisWindowMs / 1000.0)));
         var mix = new float[targetLength];

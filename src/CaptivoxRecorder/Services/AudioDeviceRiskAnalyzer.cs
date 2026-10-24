@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace Captivox.Recorder.Services;
+namespace LocalCaptureAgent.Services;
 
 internal static class AudioDeviceRiskAnalyzer
 {
@@ -20,7 +20,8 @@ internal static class AudioDeviceRiskAnalyzer
             return true;
         }
 
-        if (normalizedMic.Contains("jabra speak", StringComparison.OrdinalIgnoreCase) && normalizedSystem.Contains("jabra speak", StringComparison.OrdinalIgnoreCase))
+        // Microfoon en luidspreker van een speakerphone heten in Windows vaak verschillend, maar zijn hetzelfde apparaat.
+        if (LooksLikeEchoCancelledSpeakerphone(normalizedMic) && LooksLikeEchoCancelledSpeakerphone(normalizedSystem))
         {
             return true;
         }
@@ -75,8 +76,7 @@ internal static class AudioDeviceRiskAnalyzer
             return false;
         }
 
-        return normalized.Contains("jabra speak", StringComparison.OrdinalIgnoreCase)
-               || normalized.Contains("speakerphone", StringComparison.OrdinalIgnoreCase)
+        return normalized.Contains("speakerphone", StringComparison.OrdinalIgnoreCase)
                || normalized.Contains("telefoon met luidspreker", StringComparison.OrdinalIgnoreCase)
                || normalized.Contains("echo onderdrukkende", StringComparison.OrdinalIgnoreCase);
     }

@@ -1,0 +1,10 @@
+<Project>
+  <!-- Smaak: -p:Edition kiest de smaak; zonder Edition de gratis Captivox Recorder (Free).
+       Elke smaak bouwt in eigen bin- en obj-mappen, zodat smaken nooit elkaars tussenresultaten hergebruiken. -->
+  <PropertyGroup>
+    <Edition Condition="'$(Edition)' == ''">Free</Edition>
+    <BaseIntermediateOutputPath>obj\$(Edition)\</BaseIntermediateOutputPath>
+    <BaseOutputPath>bin\$(Edition)\</BaseOutputPath>
+    <DefaultItemExcludes>$(DefaultItemExcludes);bin\**;obj\**</DefaultItemExcludes>
+  </PropertyGroup>
+</Project>

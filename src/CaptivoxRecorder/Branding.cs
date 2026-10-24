@@ -2,21 +2,34 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 
-namespace Captivox.Recorder;
+namespace LocalCaptureAgent;
 
 internal static class Branding
 {
+    // Elke smaak heeft eigen namen: gegevensmap, vergrendeling, opstartwaarde, sleutels en worker. Zo komen verschillende
+    // Captivox-installaties op dezelfde pc nooit bij elkaars opnames, instellingen of processen.
+    public const bool IsPro = false;
+    public const string EditionName = "Gratis";
     public const string DisplayName = "Captivox Recorder";
-    public const string ProjectUrl = "https://github.com/rgerr/captivox-recorder";
-    public const string DiagnosticsPrefix = "CaptivoxRecorder";
+    public const string DiagnosticsPrefix = "CaptivoxRecorderFree";
     public const string ExecutableBaseName = "CaptivoxRecorder";
-
-    // Eigen map naast een eventuele andere Captivox-installatie; zie AppRuntime.GetAppDataDirectory.
     public const string AppDataFolder = "CaptivoxRecorderFree";
+    public const string InstanceName = "CaptivoxRecorderFree";
+    public const string WorkerScriptName = "captivox_transcription_worker.ps1";
+    public const string AppDataOverrideVariable = "CAPTIVOX_FREE_APPDATA_ROOT";
+    // De omgevingsvariabele waarmee de worker zijn Python-hulpprogramma's de gegevensmap doorgeeft. De worker zet hem zelf
+    // uit zijn parameter -AppDataRoot; de recorder zet hem bij de verbindingstest.
+    public const string WorkerDataRootVariable = "CAPTIVOX_WORKER_DATA_ROOT";
 
-    private const string IconResourceName = "Captivox.Recorder.Assets.captivox-recorder.ico";
-    private const string BannerResourceName = "Captivox.Recorder.Assets.captivox-banner.png";
-    private const string LogoResourceName = "Captivox.Recorder.Assets.captivox-logo.png";
+    // Standaardmappen in het gebruikersprofiel, per smaak eigen, zodat een nieuwe installatie nooit in de opnamemap
+    // van een andere Captivox gaat zoeken of schrijven.
+    public static readonly string DefaultStorageBase = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Captivox");
+    public static readonly string DefaultRecordingsRoot = Path.Combine(DefaultStorageBase, "Opnames");
+    public static readonly string DefaultExportsRoot = Path.Combine(DefaultStorageBase, "Exports");
+
+    private const string IconResourceName = "LocalCaptureAgent.Assets.captivox-recorder.ico";
+    private const string BannerResourceName = "LocalCaptureAgent.Assets.captivox-banner.png";
+    private const string LogoResourceName = "LocalCaptureAgent.Assets.captivox-logo.png";
 
     private static readonly Lazy<Icon?> AppIconLazy = new(LoadIcon);
     private static readonly Lazy<Image?> BannerImageLazy = new(() => LoadImage(BannerResourceName));

@@ -1,15 +1,11 @@
 using System.Text.Json.Serialization;
 
-namespace Captivox.Recorder.Models;
+namespace LocalCaptureAgent.Models;
 
 public sealed class SessionManifest
 {
     [JsonPropertyName("meeting_id")]
     public string MeetingId { get; set; } = string.Empty;
-
-    // Een naam die de gebruiker zelf gaf; leeg betekent "Opname <datum>".
-    [JsonPropertyName("title")]
-    public string? Title { get; set; }
 
     [JsonPropertyName("created_at")]
     public DateTimeOffset CreatedAt { get; set; }
@@ -104,6 +100,7 @@ public sealed class SessionManifest
     [JsonPropertyName("transcription_finished_at_authority")]
     public string? TranscriptionFinishedAtAuthority { get; set; }
 
+
     [JsonPropertyName("transcription_error")]
     public string? TranscriptionError { get; set; }
 
@@ -197,6 +194,33 @@ public sealed class SessionManifest
     [JsonPropertyName("duration_seconds")]
     public double? DurationSeconds { get; set; }
 
+    [JsonPropertyName("agenda_match_status")]
+    public string? AgendaMatchStatus { get; set; }
+
+    [JsonPropertyName("agenda_match_confidence")]
+    public string? AgendaMatchConfidence { get; set; }
+
+    [JsonPropertyName("agenda_match_basis")]
+    public string? AgendaMatchBasis { get; set; }
+
+    [JsonPropertyName("agenda_match_recorded_at_used")]
+    public DateTimeOffset? AgendaMatchRecordedAtUsed { get; set; }
+
+    [JsonPropertyName("agenda_match_time_delta_minutes")]
+    public double? AgendaMatchTimeDeltaMinutes { get; set; }
+
+    [JsonPropertyName("agenda_match_reason")]
+    public string? AgendaMatchReason { get; set; }
+
+    [JsonPropertyName("manual_agenda_match_confirmed")]
+    public bool ManualAgendaMatchConfirmed { get; set; }
+
+    [JsonPropertyName("manual_agenda_match_confirmed_at")]
+    public DateTimeOffset? ManualAgendaMatchConfirmedAt { get; set; }
+
+    [JsonPropertyName("agenda_match_candidates")]
+    public List<AgendaMatchCandidateSnapshot> AgendaMatchCandidates { get; set; } = new();
+
     [JsonPropertyName("recovery_status")]
     public string? RecoveryStatus { get; set; }
 
@@ -218,4 +242,80 @@ public sealed class SessionManifest
     [JsonPropertyName("transcript_schema_version")]
     public string? TranscriptSchemaVersion { get; set; }
 
+
+
+    [JsonPropertyName("insights_status")]
+    public string? InsightsStatus { get; set; }
+
+    [JsonPropertyName("insights_contract_status")]
+    public string? InsightsContractStatus { get; set; }
+
+    [JsonPropertyName("insights_actions_count")]
+    public int? InsightsActionsCount { get; set; }
+
+    [JsonPropertyName("insights_decisions_count")]
+    public int? InsightsDecisionsCount { get; set; }
+
+    [JsonPropertyName("insights_open_questions_count")]
+    public int? InsightsOpenQuestionsCount { get; set; }
+
+    [JsonPropertyName("insights_topics_count")]
+    public int? InsightsTopicsCount { get; set; }
+
+    [JsonPropertyName("insights_filtered_items_count")]
+    public int? InsightsFilteredItemsCount { get; set; }
+
+    [JsonPropertyName("structured_export_status")]
+    public string? StructuredExportStatus { get; set; }
+
+    [JsonPropertyName("structured_export_finished_at")]
+    public DateTimeOffset? StructuredExportFinishedAt { get; set; }
+
+    [JsonPropertyName("structured_export_error")]
+    public string? StructuredExportError { get; set; }
+
+    [JsonPropertyName("structured_export_directory")]
+    public string? StructuredExportDirectory { get; set; }
+
+    [JsonPropertyName("post_meeting_review_pack_status")]
+    public string? PostMeetingReviewPackStatus { get; set; }
+
+    [JsonPropertyName("post_meeting_review_pack_path")]
+    public string? PostMeetingReviewPackPath { get; set; }
+
+    [JsonPropertyName("post_meeting_review_markdown_path")]
+    public string? PostMeetingReviewMarkdownPath { get; set; }
+
+    [JsonPropertyName("post_meeting_review_status_path")]
+    public string? PostMeetingReviewStatusPath { get; set; }
+
+    [JsonPropertyName("post_meeting_review_generated_at_utc")]
+    public DateTimeOffset? PostMeetingReviewGeneratedAtUtc { get; set; }
+
+    // Velden die deze editie niet kent (bijvoorbeeld uit een uitgebreidere versie) blijven bij opnieuw opslaan
+    // ongewijzigd in manifest.json staan in plaats van stil te verdwijnen.
+    [JsonExtensionData]
+    public Dictionary<string, System.Text.Json.JsonElement>? AdditionalFields { get; set; }
+}
+
+
+public sealed class AgendaMatchCandidateSnapshot
+{
+    [JsonPropertyName("title")]
+    public string Title { get; set; } = string.Empty;
+
+    [JsonPropertyName("start_at")]
+    public DateTimeOffset? StartAt { get; set; }
+
+    [JsonPropertyName("end_at")]
+    public DateTimeOffset? EndAt { get; set; }
+
+    [JsonPropertyName("calendar_account")]
+    public string CalendarAccount { get; set; } = string.Empty;
+
+    [JsonPropertyName("match_score")]
+    public double MatchScore { get; set; }
+
+    [JsonPropertyName("match_reason")]
+    public string MatchReason { get; set; } = string.Empty;
 }

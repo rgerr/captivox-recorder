@@ -1,15 +1,18 @@
-namespace Captivox.Recorder.Services;
+namespace LocalCaptureAgent.Services;
 
 internal static class SessionArtifactPathService
 {
     public const string ExportsDirectoryName = "exports";
     public const string DiagnosticsDirectoryName = "diagnostics";
+    public const string AiDirectoryName = "ai";
 
     public static string EnsureExportsDirectory(string sessionDirectory) => EnsureSubDirectory(sessionDirectory, ExportsDirectoryName);
     public static string EnsureDiagnosticsDirectory(string sessionDirectory) => EnsureSubDirectory(sessionDirectory, DiagnosticsDirectoryName);
+    public static string EnsureAiDirectory(string sessionDirectory) => EnsureSubDirectory(sessionDirectory, AiDirectoryName);
 
     public static string ExportsPath(string sessionDirectory, string fileName) => Path.Combine(sessionDirectory, ExportsDirectoryName, fileName);
     public static string DiagnosticsPath(string sessionDirectory, string fileName) => Path.Combine(sessionDirectory, DiagnosticsDirectoryName, fileName);
+    public static string AiPath(string sessionDirectory, string fileName) => Path.Combine(sessionDirectory, AiDirectoryName, fileName);
 
     public static string ResolveTranscriptTextPath(string sessionDirectory)
         => ResolveFirstExisting(sessionDirectory, "transcript.txt", Path.Combine("transcripts", "transcript.txt"));
@@ -22,6 +25,15 @@ internal static class SessionArtifactPathService
 
     public static string ResolveDiagnosticsPath(string sessionDirectory, string fileName)
         => ResolveFirstExisting(sessionDirectory, Path.Combine(DiagnosticsDirectoryName, fileName), fileName);
+
+    public static string ResolveAiPath(string sessionDirectory, string fileName)
+        => ResolveFirstExisting(sessionDirectory, Path.Combine(AiDirectoryName, fileName), fileName);
+
+    public static string GetPreferredAiWritePath(string sessionDirectory, string fileName)
+    {
+        Directory.CreateDirectory(Path.Combine(sessionDirectory, AiDirectoryName));
+        return Path.Combine(sessionDirectory, AiDirectoryName, fileName);
+    }
 
     private static string EnsureSubDirectory(string sessionDirectory, string subDirectoryName)
     {

@@ -1,9 +1,9 @@
-namespace Captivox.Recorder.Models;
+namespace LocalCaptureAgent.Models;
 
-// Het instellingenbestand dat de recorder en de transcriptieworker allebei lezen
-// (%LOCALAPPDATA%\CaptivoxRecorderFree\settings\application_settings.json).
 public sealed class ApplicationSettings
 {
     public UiSettings Ui { get; set; } = new();
     public WorkerSettings Worker { get; set; } = new();
+    public LicenseSettings License { get; set; } = new();
+    public HardwareProfileSettings Hardware { get; set; } = new();
 }

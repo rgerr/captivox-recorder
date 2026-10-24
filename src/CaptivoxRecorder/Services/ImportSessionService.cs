@@ -1,8 +1,8 @@
 using System.Diagnostics;
 using System.Text.Json;
-using Captivox.Recorder.Models;
+using LocalCaptureAgent.Models;
 
-namespace Captivox.Recorder.Services;
+namespace LocalCaptureAgent.Services;
 
 internal static class ImportSessionService
 {
@@ -21,7 +21,7 @@ internal static class ImportSessionService
             throw new FileNotFoundException("Bronbestand voor import niet gevonden.", sourcePath);
         }
 
-        var outputRoot = string.IsNullOrWhiteSpace(settings.Ui.OutputRoot) ? UiSettings.DefaultOutputRoot : settings.Ui.OutputRoot.Trim();
+        var outputRoot = string.IsNullOrWhiteSpace(settings.Ui.OutputRoot) ? Branding.DefaultRecordingsRoot : settings.Ui.OutputRoot.Trim();
         Directory.CreateDirectory(outputRoot);
 
         var ffmpegPath = string.IsNullOrWhiteSpace(settings.Worker.FfmpegPath) ? "ffmpeg" : settings.Worker.FfmpegPath.Trim();
@@ -70,6 +70,13 @@ internal static class ImportSessionService
             FileModifiedAt = metadataInspection.FileModifiedAt,
             ImportedAt = importedAt,
             DurationSeconds = metadataInspection.DurationSeconds,
+            AgendaMatchStatus = string.Equals(metadataInspection.MetadataConfidence, "high", StringComparison.OrdinalIgnoreCase)
+                ? "match_candidate"
+                : "manual_review_required",
+            AgendaMatchConfidence = metadataInspection.MetadataConfidence,
+            AgendaMatchBasis = string.Equals(metadataInspection.MetadataConfidence, "high", StringComparison.OrdinalIgnoreCase) ? "trusted_recorded_at" : "manual_review_required",
+            AgendaMatchRecordedAtUsed = metadataInspection.RecommendedAgendaMatchTime,
+            AgendaMatchReason = metadataInspection.ConfidenceReason,
             RecoveryStatus = null,
             RecoveryNotes = null,
             LastHeartbeatAt = DateTimeOffset.Now,

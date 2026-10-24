@@ -7,27 +7,36 @@
     <PlatformTarget>x64</PlatformTarget>
     <UseWindowsForms>true</UseWindowsForms>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
-    <AssemblyName>CaptivoxRecorder</AssemblyName>
-    <RootNamespace>Captivox.Recorder</RootNamespace>
-    <AssemblyTitle>Captivox Recorder</AssemblyTitle>
-    <Product>Captivox Recorder</Product>
-    <Copyright>Copyright (c) 2026 rgerr. GPL-3.0-or-later.</Copyright>
+    <RootNamespace>LocalCaptureAgent</RootNamespace>
     <ApplicationIcon>Assets\captivox-recorder.ico</ApplicationIcon>
-    <Version>1.1.1</Version>
-    <InformationalVersion>1.1.1</InformationalVersion>
-    <AssemblyVersion>1.1.1</AssemblyVersion>
-    <FileVersion>1.1.1</FileVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <AssemblyName>CaptivoxRecorder</AssemblyName>
+    <AssemblyTitle>Captivox Recorder</AssemblyTitle>
+    <Product>Captivox Recorder</Product>
+    <Version>2.0.0</Version>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <InformationalVersion>$(Version)</InformationalVersion>
+    <AssemblyVersion>$(Version)</AssemblyVersion>
+    <FileVersion>$(Version)</FileVersion>
+  </PropertyGroup>
+
   <ItemGroup>
-    <EmbeddedResource Include="Assets\captivox-banner.png" LogicalName="Captivox.Recorder.Assets.captivox-banner.png" />
-    <EmbeddedResource Include="Assets\captivox-logo.png" LogicalName="Captivox.Recorder.Assets.captivox-logo.png" />
-    <EmbeddedResource Include="Assets\captivox-recorder.ico" LogicalName="Captivox.Recorder.Assets.captivox-recorder.ico" />
+    <EmbeddedResource Include="Assets\captivox-banner.png" LogicalName="LocalCaptureAgent.Assets.captivox-banner.png" />
+    <EmbeddedResource Include="Assets\captivox-logo.png" LogicalName="LocalCaptureAgent.Assets.captivox-logo.png" />
+    <EmbeddedResource Include="Assets\captivox-recorder.ico" LogicalName="LocalCaptureAgent.Assets.captivox-recorder.ico" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
+    <PackageReference Include="System.Drawing.Common" Version="8.0.29" />
     <PackageReference Include="System.Management" Version="8.0.0" />
   </ItemGroup>
+
 </Project>
+

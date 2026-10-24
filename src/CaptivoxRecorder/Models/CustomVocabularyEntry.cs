@@ -1,4 +1,4 @@
-namespace Captivox.Recorder.Models;
+namespace LocalCaptureAgent.Models;
 
 public sealed class CustomVocabularyEntry
 {

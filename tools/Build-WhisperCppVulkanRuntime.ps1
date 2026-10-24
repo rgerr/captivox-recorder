@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
     [string]$SourceRoot = '',
-    [string]$RuntimeRoot = $(if ($env:CAPTIVOX_APPDATA_ROOT) { Join-Path $env:CAPTIVOX_APPDATA_ROOT 'runtime\whispercpp' } else { Join-Path $env:LOCALAPPDATA 'CaptivoxRecorderFree\runtime\whispercpp' }),
+    # De runtime-map in de gegevensmap van de app (<gegevensmap>\runtime\whispercpp). Verplicht: install-prereqs.ps1 geeft
+    # hem mee, zodat dit script nooit in de map van een andere Captivox-installatie schrijft.
+    [string]$RuntimeRoot = '',
     [string]$ModelName = 'large-v3-turbo-q5_0',
     [string]$WhisperCppRef = 'v1.7.6',
     [string]$NativeBuildRoot = '',
@@ -10,6 +12,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if ([string]::IsNullOrWhiteSpace($RuntimeRoot)) {
+    throw 'Geef -RuntimeRoot op: de map runtime\whispercpp in de gegevensmap van de app (install-prereqs.ps1 doet dat zelf).'
+}
+$RuntimeRoot = [System.IO.Path]::GetFullPath($RuntimeRoot)
 if ($PSVersionTable.PSVersion.Major -ge 7) { $PSNativeCommandUseErrorActionPreference = $true }
 
 function Require-Command([string]$Name, [string]$Hint) {
@@ -43,28 +49,40 @@ function Get-ProjectRootFromScript {
     return (Split-Path -Parent $PSScriptRoot)
 }
 
+# De native build gebeurt in een korte map in de root van een schijf: de Vulkan-subbuild van whisper.cpp maakt diep
+# geneste paden en MSBuild loopt vast boven ongeveer 240 tekens. De mapnaam hoort bij de gegevensmap van deze app
+# (bijvoorbeeld cvxwc-recorderfree of cvxwc-pro), zodat de build nooit de bouwmap van een andere Captivox-installatie
+# opruimt of hergebruikt.
+function Get-NativeBuildFolderName {
+    $productFolder = Split-Path -Leaf (Split-Path -Parent (Split-Path -Parent $RuntimeRoot))
+    $tag = ($productFolder.ToLowerInvariant() -replace '^captivox', '') -replace '[^a-z0-9]', ''
+    if ([string]::IsNullOrWhiteSpace($tag)) { $tag = 'app' }
+    if ($tag.Length -gt 16) { $tag = $tag.Substring(0, 16) }
+    return 'cvxwc-' + $tag
+}
+
 function Resolve-NativeBuildRoot([string]$RequestedRoot) {
     if (-not [string]::IsNullOrWhiteSpace($RequestedRoot)) {
         if (Test-DirectoryWritable -PathToCheck $RequestedRoot) { return (Resolve-Path -LiteralPath $RequestedRoot).Path }
         throw "Native buildroot is niet beschrijfbaar: $RequestedRoot"
     }
+    $folderName = Get-NativeBuildFolderName
     $candidates = New-Object System.Collections.Generic.List[string]
-    if (-not [string]::IsNullOrWhiteSpace($env:CAPTIVOX_NATIVE_BUILD_ROOT)) { $candidates.Add($env:CAPTIVOX_NATIVE_BUILD_ROOT) | Out-Null }
     $projectRoot = Get-ProjectRootFromScript
     $projectDrive = [IO.Path]::GetPathRoot($projectRoot)
-    if (-not [string]::IsNullOrWhiteSpace($projectDrive)) { $candidates.Add((Join-Path $projectDrive 'cvx-wcpp')) | Out-Null }
-    if (-not [string]::IsNullOrWhiteSpace($env:SystemDrive)) { $candidates.Add((Join-Path ($env:SystemDrive + '\') 'cvx-wcpp')) | Out-Null }
-    if (-not [string]::IsNullOrWhiteSpace($env:TEMP)) { $candidates.Add((Join-Path $env:TEMP 'cvx-wcpp')) | Out-Null }
+    if (-not [string]::IsNullOrWhiteSpace($projectDrive)) { $candidates.Add((Join-Path $projectDrive $folderName)) | Out-Null }
+    if (-not [string]::IsNullOrWhiteSpace($env:SystemDrive)) { $candidates.Add((Join-Path ($env:SystemDrive + '\') $folderName)) | Out-Null }
+    if (-not [string]::IsNullOrWhiteSpace($env:TEMP)) { $candidates.Add((Join-Path $env:TEMP $folderName)) | Out-Null }
     foreach ($candidate in $candidates | Select-Object -Unique) {
         if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
         if (Test-DirectoryWritable -PathToCheck $candidate) { return (Resolve-Path -LiteralPath $candidate).Path }
     }
-    throw 'Geen korte, beschrijfbare native buildroot gevonden. Zet CAPTIVOX_NATIVE_BUILD_ROOT bijvoorbeeld op D:\cvx-wcpp en voer opnieuw uit.'
+    throw "Geen korte, beschrijfbare native buildroot gevonden. Geef er een op met -NativeBuildRoot, bijvoorbeeld D:\$folderName."
 }
 
 function Assert-ShortPathBudget([string]$BuildDir) {
     $projected = Join-Path $BuildDir 'ggml\src\ggml-vulkan\vulkan-shaders-gen-prefix\src\vulkan-shaders-gen-build\CMakeFiles\4.3.2\VCTargetsPath.vcxproj'
-    if ($projected.Length -ge 240) { throw "Native buildpad is nog te lang voor MSBuild/Vulkan-subbuild ($($projected.Length) tekens). Gebruik een kort pad, bijvoorbeeld: .\tools\Build-WhisperCppVulkanRuntime.ps1 -NativeBuildRoot D:\cvx-wcpp" }
+    if ($projected.Length -ge 240) { throw "Native buildpad is nog te lang voor MSBuild/Vulkan-subbuild ($($projected.Length) tekens). Gebruik een kort pad met -NativeBuildRoot, bijvoorbeeld D:\$(Get-NativeBuildFolderName)." }
 }
 
 function Get-VsWherePath {
@@ -188,7 +206,7 @@ foreach ($dll in $dllCandidates) { Copy-Item -LiteralPath $dll.FullName -Destina
 $modelPath = Join-Path $RuntimeRoot "models\ggml-$ModelName.bin"
 if (-not $SkipModelDownload -and -not (Test-Path -LiteralPath $modelPath)) { $modelUrl = Get-ModelUrl -Name $ModelName; Write-Host "Download model: $modelUrl" -ForegroundColor Cyan; Invoke-WebRequest -Uri $modelUrl -OutFile $modelPath -UseBasicParsing }
 elseif ($SkipModelDownload) { Write-Warning "Modeldownload overgeslagen. Controleer handmatig dat dit bestand bestaat: $modelPath" }
-$manifest = [ordered]@{ version = 'v7.16.0'; engine = 'whisper.cpp Vulkan'; source_ref = $WhisperCppRef; source_root = $SourceRoot; build_dir = $buildDir; native_build_root = $nativeRoot; runtime_root = $RuntimeRoot; whisper_cli = (Join-Path $RuntimeRoot 'whisper-cli.exe'); model_path = $modelPath; selected_model_path = $modelPath; model_name = $ModelName; generator = ("{0} {1}" -f $generator.Name, $generator.Platform); visual_studio = $vs.InstallPath; vulkan_sdk = $vulkan.Root; safe_vulkan_flags = @('--no-flash-attn','--beam-size','1','--best-of','1','--device','0'); created_at = (Get-Date).ToString('o') }
+$manifest = [ordered]@{ version = 1;engine = 'whisper.cpp Vulkan'; source_ref = $WhisperCppRef; source_root = $SourceRoot; build_dir = $buildDir; native_build_root = $nativeRoot; runtime_root = $RuntimeRoot; whisper_cli = (Join-Path $RuntimeRoot 'whisper-cli.exe'); model_path = $modelPath; selected_model_path = $modelPath; model_name = $ModelName; generator = ("{0} {1}" -f $generator.Name, $generator.Platform); visual_studio = $vs.InstallPath; vulkan_sdk = $vulkan.Root; safe_vulkan_flags = @('--no-flash-attn','--beam-size','1','--best-of','1','--device','0'); created_at = (Get-Date).ToString('o') }
 $manifestPath = Join-Path $RuntimeRoot 'runtime_manifest.json'
 $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 Write-Host ''
@@ -198,4 +216,4 @@ Write-Host $modelPath
 Write-Host $manifestPath
 Write-Host ''
 Write-Host 'Voer nu uit vanuit de Captivox-projectroot:' -ForegroundColor Green
-Write-Host '.\tools\Test-WhisperCppVulkanRuntime.ps1'
+Write-Host ".\tools\Test-WhisperCppVulkanRuntime.ps1 -RuntimeRoot `"$RuntimeRoot`""

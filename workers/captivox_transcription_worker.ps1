@@ -2,14 +2,16 @@
     [switch]$RunOnce,
     [switch]$SelfTest,
     [string]$SettingsPath,
-    [string]$ProcessSessionDir
+    [string]$ProcessSessionDir,
+    # De gegevensmap van de recorder die deze worker start. Verplicht; de worker leest geen gegevensmap uit de omgeving.
+    [string]$AppDataRoot
 )
 
 $ErrorActionPreference = 'Stop'
-# >>> psmodulepath-sanitize (v8.27.1)
+# >>> psmodulepath-sanitize
 # Windows PowerShell 5.1 die (via de recorder) vanuit PowerShell 7 is gestart, erft het modulepad van PowerShell 7. Dan
-# laden Microsoft.PowerShell.Utility-functies als Get-FileHash niet, en werd een correct transcript als "verplichte output
-# ontbreekt" afgekeurd (2-10-2026). Alleen de paden van Windows PowerShell en eigen modulemappen houden.
+# laden Microsoft.PowerShell.Utility-functies als Get-FileHash niet, en zou een correct transcript als "verplichte output
+# ontbreekt" worden afgekeurd. Alleen de paden van Windows PowerShell en eigen modulemappen houden.
 if ($PSVersionTable.PSEdition -ne 'Core') {
     # De eigen modules van Windows PowerShell vooraan ($PSHOME), zodat ze altijd winnen; PowerShell 7-paden (ook de
     # Store-versie onder WindowsApps) eruit.
@@ -18,7 +20,7 @@ if ($PSVersionTable.PSEdition -ne 'Core') {
     $env:PSModulePath = (@($windowsPowerShellModules) + $keptModulePaths | Select-Object -Unique) -join ';'
 }
 # <<< psmodulepath-sanitize
-$WorkerVersionFallback = 'v7.85.0'
+$WorkerVersionFallback = 'onbekend'
 $WorkerRoot = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 $WorkerVersionFile = Join-Path $WorkerRoot 'worker.version.txt'
 $WorkerVersion = $WorkerVersionFallback
@@ -38,11 +40,18 @@ if (-not [string]::IsNullOrWhiteSpace($ExpectedWorkerVersion) -and $WorkerVersio
     exit 12
 }
 
-# De gegevensmap van de gratis Captivox Recorder; de recorder geeft hem door via CAPTIVOX_APPDATA_ROOT.
-$AppDataRoot = if (-not [string]::IsNullOrWhiteSpace($env:CAPTIVOX_APPDATA_ROOT)) { [string]$env:CAPTIVOX_APPDATA_ROOT } else { Join-Path $env:LOCALAPPDATA 'CaptivoxRecorderFree' }
+# De recorder geeft zijn eigen gegevensmap mee als parameter -AppDataRoot. Zonder die map stopt de worker: hij mag nooit
+# terugvallen op de map van een andere Captivox op dezelfde pc, ook niet via een geerfde omgevingsvariabele.
+if ([string]::IsNullOrWhiteSpace($AppDataRoot)) {
+    [Console]::Error.WriteLine('[Captivox] Parameter -AppDataRoot ontbreekt; start de worker via de recorder.')
+    exit 3
+}
+$AppDataRoot = [System.IO.Path]::GetFullPath($AppDataRoot).TrimEnd('\')
+# De Python-hulpprogramma's vinden hun runtime via deze variabele. Altijd uit de parameter zetten, zodat een geerfde
+# waarde nooit meetelt.
+$env:CAPTIVOX_WORKER_DATA_ROOT = $AppDataRoot
 $SettingsPath = if ($SettingsPath) { $SettingsPath } else { Join-Path $AppDataRoot 'settings\application_settings.json' }
 $HelperScript = Join-Path $WorkerRoot 'transcribe_with_whisperx_recorder.py'
-# Logboeken in de gegevensmap, zodat de programmamap alleen-lezen mag zijn.
 $WorkerLogRoot = Join-Path $AppDataRoot 'logs\worker'
 $MainLogFile = Join-Path $WorkerLogRoot ("ready_worker_{0}.log" -f (Get-Date -Format 'yyyyMMdd'))
 $LockFile = Join-Path $WorkerLogRoot 'captivox_transcription_worker.lock'
@@ -50,8 +59,9 @@ $WorkerRuntimeRoot = Join-Path $AppDataRoot 'temp\worker_runtime'
 $WorkerStateFile = Join-Path $WorkerRuntimeRoot 'worker_status.json'
 $RetentionRuntimeRoot = Join-Path $AppDataRoot 'temp\retention_runtime'
 $RetentionStateFile = Join-Path $RetentionRuntimeRoot 'retention_status.json'
-$CurrentDefaultOutputRoot = Join-Path $env:USERPROFILE 'Captivox\Opnames'
-$LegacyDefaultOutputRoots = @()
+# De standaard opnamemap van deze smaak; de recorder geeft hem mee (CAPTIVOX_DEFAULT_OUTPUT_ROOT).
+$CurrentDefaultOutputRoot = [string]$env:CAPTIVOX_DEFAULT_OUTPUT_ROOT
+$LegacyDefaultOutputRoots = @('C:\Meetily\recordings','C:\Meetily\Recordings')
 
 function Resolve-BundledWorkerPythonPath {
     $candidates = @(
@@ -339,7 +349,6 @@ function Load-WorkerConfig {
         SessionRoots = @($roots | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
         DiagnosticsMode = [bool]$settings.ui.diagnosticsMode
         WhisperXEnabled = [bool]$settings.worker.whisperXEnabled
-        # Sprekerherkenning zit niet in de gratis versie; de instelling wordt genegeerd.
         DiarizationEnabled = $false
         UseProductionProfile = if ($null -ne $settings.worker.useProductionProfile) { [bool]$settings.worker.useProductionProfile } else { $true }
         TranscriptionProfile = if ($settings.worker.transcriptionProfile) { Normalize-TranscriptionProfile -Profile ([string]$settings.worker.transcriptionProfile) } else { 'auto' }
@@ -753,7 +762,7 @@ function Get-EffectiveDiarizationModel {
     if (-not $Config.DiarizationEnabled) { return '' }
     $profile = Resolve-EffectiveTranscriptionProfile -Config $Config
     if ($profile -eq 'amd-gpu') {
-        # v7.35.0: AMD gebruikt FFmpeg Whisper GPU/Vulkan voor transcriptie
+        # AMD gebruikt FFmpeg Whisper GPU/Vulkan voor transcriptie
         # en pyannote 3.1 in de bestaande hoofdworker voor CPU-diarization.
         return 'pyannote/speaker-diarization-3.1'
     }
@@ -775,9 +784,7 @@ function Resolve-TokenHelperExe {
     $candidates = @(
         $env:CAPTIVOX_TOKEN_HELPER_EXE,
         $env:CAPTIVOX_IMPORT_HELPER_EXE,
-        $env:CAPTIVOX_RECORDER_EXE,
-        (Join-Path (Split-Path -Parent $PSScriptRoot) 'CaptivoxRecorder.exe'),
-        (Join-Path $PSScriptRoot 'CaptivoxRecorder.exe')
+        $env:CAPTIVOX_RECORDER_EXE
     )
 
     foreach ($candidate in $candidates) {
@@ -797,9 +804,7 @@ function Resolve-ImportHelperExe {
     $candidates = @(
         $env:CAPTIVOX_IMPORT_HELPER_EXE,
         $env:CAPTIVOX_TOKEN_HELPER_EXE,
-        $env:CAPTIVOX_RECORDER_EXE,
-        (Join-Path (Split-Path -Parent $PSScriptRoot) 'CaptivoxRecorder.exe'),
-        (Join-Path $PSScriptRoot 'CaptivoxRecorder.exe')
+        $env:CAPTIVOX_RECORDER_EXE
     )
 
     foreach ($candidate in $candidates) {
@@ -931,7 +936,7 @@ function Get-HfToken {
 
     $helperExe = Resolve-TokenHelperExe
     if (-not $helperExe) {
-        throw 'HF-token bridge niet gevonden (CaptivoxRecorder.exe ontbreekt naast de worker).'
+        throw 'HF-token bridge niet gevonden (de recorder gaf zijn programmapad niet mee).'
     }
 
     $result = Invoke-ExternalProcess -FileName $helperExe -Arguments @('--get-hf-token') -EnvironmentVariables @{} -WorkingDirectory (Split-Path -Parent $helperExe) -StdoutPath $null -StderrPath $null
@@ -1209,6 +1214,11 @@ function Invoke-RetentionPolicy {
                     $transcriptFiles.Add((Join-Path $sessionDir 'transcript.json')) | Out-Null
                     Add-RetentionCandidatePath -List $transcriptFiles -SessionDir $sessionDir -Candidate $manifest.transcript_text_path
                     Add-RetentionCandidatePath -List $transcriptFiles -SessionDir $sessionDir -Candidate $manifest.transcript_json_path
+                    # Bij opnieuw uitschrijven gaat het oude transcript opzij als transcript.<ext>.vorige-<tijd>; die kopieen
+                    # volgen dezelfde bewaartermijn als het transcript zelf.
+                    Get-ChildItem -LiteralPath $sessionDir -Recurse -File -Filter 'transcript.*.vorige-*' -ErrorAction SilentlyContinue |
+                        Where-Object { $_.Name -match '^transcript\.[A-Za-z0-9]+\.vorige-[0-9-]+$' } |
+                        ForEach-Object { $transcriptFiles.Add($_.FullName) | Out-Null }
                     $snapshot.deletedTranscriptFileCount += Remove-RetentionFiles -Candidates $transcriptFiles.ToArray() -SessionDir $sessionDir
                 }
 
@@ -1301,8 +1311,7 @@ function Release-RunLock {
 
 function Quote-Arg {
     param([string]$Value)
-    # Een lege waarde moet als "" mee, anders valt hij weg en schuift het volgende argument op
-    # (bijvoorbeeld --diarization-model zonder sprekerherkenning).
+    # Een lege waarde moet als "" mee, anders valt hij weg en schuift het volgende argument op.
     if ([string]::IsNullOrEmpty($Value)) {
         return '""'
     }
@@ -1801,7 +1810,7 @@ function Get-ExpectedOutputs {
 
 function Test-ExpectedOutputsExist {
     param([pscustomobject]$Expected)
-    # v8.27.1: waarom de controle faalde, voor de foutmelding (voorheen bleef de reden leeg).
+    # Waarom de controle faalde, voor de foutmelding.
     $script:ExpectedOutputsFailureReason = ''
     if (-not $Expected.WantsTxt -and -not $Expected.WantsJson) { $script:ExpectedOutputsFailureReason = 'geen uitvoerformaat'; return $false }
     try {
@@ -2312,6 +2321,8 @@ function Invoke-PythonWorker {
         $hardwareSnapshot | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $hardwareProfilePath -Encoding UTF8
     } catch { Write-DiagnosticsLog -SessionDir $SessionDir -Message "hardware_profile.json kon niet worden geschreven: $($_.Exception.Message)" }
     Write-DiagnosticsLog -SessionDir $SessionDir -Message "Resolved worker output targets: txt=$resolvedTxtPath json=$resolvedJsonPath srt=$resolvedSrtPath vtt=$resolvedVttPath model=$diagModel transcription_profile=$effectiveTranscriptionProfile compute=$effectiveComputeType batch=$effectiveBatchSize profile=$(Get-WorkerProfileSummary) whispercppExe=$($script:CurrentConfig.WhisperCppExe) whispercppModel=$effectiveWhisperCppModelPath min=$($script:CurrentConfig.MinSpeakers) max=$($script:CurrentConfig.MaxSpeakers)"
+    # Het ingestelde WhisperX-model voor als de AMD-route terugvalt op de processor.
+    $env:CAPTIVOX_WHISPERX_MODEL = [string]$script:CurrentConfig.Model
     $arguments = @(
         $HelperScript,
         '--input', $AudioPath,
@@ -2410,6 +2421,7 @@ function Start-TranscriptSessionRunner {
         '-ExecutionPolicy', 'Bypass',
         '-File', $workerScriptPath,
         '-SettingsPath', $SettingsPath,
+        '-AppDataRoot', $AppDataRoot,
         '-ProcessSessionDir', $SessionDir
     )
     $runnerArgumentLine = (($runnerArgs | ForEach-Object { Quote-Arg ([string]$_) }) -join ' ')
@@ -2862,7 +2874,7 @@ function Invoke-SelfTest {
     if ($selfTestEffectiveDiarizationEnabled) {
         $helperExe = Resolve-TokenHelperExe
         if (-not $helperExe -and -not $env:HF_TOKEN) {
-            throw 'Token bridge ontbreekt: CaptivoxRecorder.exe is niet gevonden naast de worker.'
+            throw 'Token bridge ontbreekt: de recorder gaf zijn programmapad niet mee.'
         }
 
         $checks.token_bridge_ok = $true
@@ -2885,6 +2897,8 @@ function Invoke-SelfTest {
     $diagModel = if ($effectiveDiarizationEnabled) { Get-EffectiveDiarizationModel } else { '' }
     $effectiveWhisperCppModelPath = Resolve-EffectiveWhisperCppModelPath -ConfiguredPath $script:CurrentConfig.WhisperCppModelPath -TranscriptionProfile $effectiveTranscriptionProfile
     $timingsJsonPath = Get-SessionDiagnosticsPath -SessionDir $SessionDir -FileName 'phase_timings.json'
+    # Het ingestelde WhisperX-model voor als de AMD-route terugvalt op de processor.
+    $env:CAPTIVOX_WHISPERX_MODEL = [string]$script:CurrentConfig.Model
     $arguments = @(
         $HelperScript,
         '--self-test',
@@ -3045,16 +3059,16 @@ try {
 catch {
     $script:ExitCode = 1
     Write-Log 'ERROR' $_.Exception.Message
-    # v8.37.1: zonder vergrendeling (zelftest, tweede monitor) de status van de draaiende worker niet overschrijven.
+    # Zonder vergrendeling (zelftest, tweede monitor) de status van de draaiende worker niet overschrijven.
     if ($ProcessSessionDir -or $script:RunLockAcquired) {
         Update-WorkerRuntimeStatus -State 'error' -Message $_.Exception.Message -MarkActivity
     }
 }
 finally {
     Stop-ReadyWatchers
-    # v8.37.1: alleen wie de vergrendeling had, geeft hem vrij en zet de status op 'gestopt'. Een worker die de vergrendeling niet
+    # Alleen wie de vergrendeling had, geeft hem vrij en zet de status op 'gestopt'. Een worker die de vergrendeling niet
     # kreeg (een andere draait al), de zelftest en een uitgeschakelde worker raken de vergrendeling en status van de draaiende
-    # worker niet aan (voorheen werd die op 'gestopt' gezet en zijn vergrendelingsbestand weggehaald).
+    # worker niet aan.
     if ($ProcessSessionDir) {
         Write-Log 'INFO' "Sessierunner gestopt voor $ProcessSessionDir."
     }

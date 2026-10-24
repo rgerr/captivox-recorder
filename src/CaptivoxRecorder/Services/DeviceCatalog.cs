@@ -1,7 +1,7 @@
-using Captivox.Recorder.Models;
+using LocalCaptureAgent.Models;
 using NAudio.CoreAudioApi;
 
-namespace Captivox.Recorder.Services;
+namespace LocalCaptureAgent.Services;
 
 public static class DeviceCatalog
 {

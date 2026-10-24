@@ -1,8 +1,9 @@
-namespace Captivox.Recorder.Models;
+namespace LocalCaptureAgent.Models;
 
 public sealed class WorkerSettings
 {
     public bool WhisperXEnabled { get; set; } = true;
+    // De gratis versie herkent geen sprekers.
     public bool DiarizationEnabled { get; set; } = false;
     public bool UseProductionProfile { get; set; } = true;
     public string TranscriptionProfile { get; set; } = "auto";
@@ -14,8 +15,8 @@ public sealed class WorkerSettings
     public string ComputeType { get; set; } = "float16";
     public string Language { get; set; } = "nl";
     public int BatchSize { get; set; } = 4;
-    public int? MinSpeakers { get; set; }
-    public int? MaxSpeakers { get; set; }
+    public int? MinSpeakers { get; set; } = 2;
+    public int? MaxSpeakers { get; set; } = 4;
     public string TranscriptOutputFormat { get; set; } = "txt+json";
     public string DiarizationMode { get; set; } = "stable";
     public string DiarizationAcceleration { get; set; } = "auto";

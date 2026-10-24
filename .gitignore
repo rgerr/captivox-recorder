@@ -1,12 +1,5 @@
-# Bouwen
 bin/
 obj/
 dist/
-.vs/
 *.user
-
-# Lokale testruns van de worker
 __pycache__/
-*.pyc
-workers/_WorkerLogs/
-workers/requirements.windows.realized.lock.txt

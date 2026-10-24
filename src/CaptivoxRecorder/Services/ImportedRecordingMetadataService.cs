@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 
-namespace Captivox.Recorder.Services;
+namespace LocalCaptureAgent.Services;
 
 internal sealed class ImportedRecordingMetadataInspection
 {
@@ -21,6 +21,7 @@ internal sealed class ImportedRecordingMetadataInspection
     public string RecommendedRecordedAtSource { get; set; } = "none";
     public DateTimeOffset? RecommendedRecordedAt { get; set; }
     public string RecommendedRecordedAtConfidenceReason { get; set; } = string.Empty;
+    public DateTimeOffset? RecommendedAgendaMatchTime { get; set; }
     public string ConfidenceReason { get; set; } = string.Empty;
 }
 
@@ -137,6 +138,10 @@ internal static class ImportedRecordingMetadataService
             result.ConfidenceReason = "Geen bruikbare tijdinformatie gevonden.";
             result.RecommendedRecordedAtConfidenceReason = result.ConfidenceReason;
         }
+
+        result.RecommendedAgendaMatchTime = string.Equals(result.MetadataConfidence, "high", StringComparison.OrdinalIgnoreCase)
+            ? result.RecommendedRecordedAt
+            : null;
     }
 
     private static bool IsPlausibleRecordedTime(DateTimeOffset? candidate, DateTimeOffset? importedAt)

@@ -1,6 +1,6 @@
 using System.Drawing.Drawing2D;
 
-namespace Captivox.Recorder.Controls;
+namespace LocalCaptureAgent.Controls;
 
 public sealed class LevelMeterControl : Control
 {

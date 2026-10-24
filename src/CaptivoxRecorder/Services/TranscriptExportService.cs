@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json;
 
-namespace Captivox.Recorder.Services;
+namespace LocalCaptureAgent.Services;
 
 internal static class TranscriptExportService
 {
@@ -83,24 +83,6 @@ internal static class TranscriptExportService
         File.WriteAllText(destinationPath, sb.ToString(), Encoding.UTF8);
     }
 
-    public static void ExportSpeakerSegments(string transcriptJsonPath, string destinationPath)
-    {
-        var segments = ReadSegments(transcriptJsonPath);
-        var sb = new StringBuilder();
-        foreach (var group in segments.GroupBy(x => string.IsNullOrWhiteSpace(x.Speaker) ? "Onbekend" : x.Speaker))
-        {
-            sb.AppendLine(group.Key);
-            sb.AppendLine(new string('=', group.Key.Length));
-            foreach (var seg in group)
-            {
-                sb.AppendLine($"[{FormatVtt(seg.Start)} - {FormatVtt(seg.End)}] {seg.Text.Trim()}");
-            }
-            sb.AppendLine();
-        }
-
-        Directory.CreateDirectory(Path.GetDirectoryName(destinationPath) ?? ".");
-        File.WriteAllText(destinationPath, sb.ToString(), Encoding.UTF8);
-    }
 
     private static List<TranscriptSegment> ReadSegments(string transcriptJsonPath)
     {

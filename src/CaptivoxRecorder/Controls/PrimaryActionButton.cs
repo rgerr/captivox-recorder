@@ -2,7 +2,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
-namespace Captivox.Recorder.Controls;
+namespace LocalCaptureAgent.Controls;
 
 internal enum PrimaryActionVisualState
 {
@@ -191,7 +191,7 @@ internal sealed class PrimaryActionButton : Button
         {
             PrimaryActionVisualState.Stop => (Color.FromArgb(181, 35, 35), Color.FromArgb(158, 29, 29), Color.FromArgb(125, 23, 23), Color.White),
             PrimaryActionVisualState.Busy => (Color.FromArgb(170, 29, 33), Color.FromArgb(152, 24, 29), Color.FromArgb(120, 20, 24), Color.FromArgb(255, 246, 246)),
-            // v8.30.0: opnemen is rood met een witte stip (zoals overal in de schil).
+            // Opnemen is rood met een witte stip (zoals overal in de schil).
             _ => (Color.FromArgb(196, 43, 28), Color.FromArgb(170, 36, 23), Color.FromArgb(143, 29, 18), Color.White)
         };
     }

@@ -6,7 +6,8 @@ Alleen de nieuwste release krijgt beveiligingsfixes.
 
 | Versie | Ondersteund |
 | --- | --- |
-| 1.1.x | ja |
+| 2.0.x | ja |
+| 1.1.x | nee |
 | 1.0.x | nee |
 | 0.9.0-beta1 en ouder | nee |
 
@@ -34,4 +35,4 @@ Bijvoorbeeld:
 
 ---
 
-**In English**: please report vulnerabilities privately through GitHub (*Security*, *Report a vulnerability*), not in a public issue, and do not attach real recordings. Only the latest 1.1.x release is supported.
+**In English**: please report vulnerabilities privately through GitHub (*Security*, *Report a vulnerability*), not in a public issue, and do not attach real recordings. Only the latest 2.0.x release is supported.

@@ -1,9 +1,9 @@
 using System.Diagnostics;
-using Captivox.Recorder.Models;
+using LocalCaptureAgent.Models;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
-namespace Captivox.Recorder.Services;
+namespace LocalCaptureAgent.Services;
 
 internal static class PreflightCheckService
 {
@@ -20,7 +20,7 @@ internal static class PreflightCheckService
 
         if (string.IsNullOrWhiteSpace(systemDeviceId))
         {
-            errors.Add("Geen apparaat gekozen voor het geluid van de pc.");
+            errors.Add("Geen systeemaudio-device geselecteerd.");
         }
 
         if (!string.IsNullOrWhiteSpace(outputRoot))
@@ -29,16 +29,16 @@ internal static class PreflightCheckService
             {
                 Directory.CreateDirectory(outputRoot);
                 using var fs = new FileStream(Path.Combine(outputRoot, $".captivox-preflight-{Guid.NewGuid():N}.tmp"), FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.DeleteOnClose);
-                lines.Add($"Opslagmap schrijfbaar: {outputRoot}");
+                lines.Add($"Uitvoermap schrijfbaar: {outputRoot}");
             }
             catch (Exception ex)
             {
-                errors.Add($"De opslagmap is niet bruikbaar: {ex.Message}");
+                errors.Add($"Uitvoermap niet bruikbaar: {ex.Message}");
             }
         }
         else
         {
-            errors.Add("Er is geen opslagmap ingesteld.");
+            errors.Add("Uitvoermap ontbreekt.");
         }
 
         using var enumerator = new MMDeviceEnumerator();
@@ -99,7 +99,7 @@ internal static class PreflightCheckService
         if (warnings.Count == 0 && errors.Count == 0)
         {
             lines.Add(string.Empty);
-            lines.Add("Controle geslaagd: apparaten en opslagmap zijn bereikbaar.");
+            lines.Add("Preflight geslaagd. Devices, uitvoermap en relevante transcriptie-afhankelijkheden zijn bereikbaar.");
         }
 
         return new PreflightReport
@@ -110,46 +110,64 @@ internal static class PreflightCheckService
         };
     }
 
-    // Een ontbrekende transcriptie-omgeving blokkeert het opnemen niet: de opname wacht dan tot hij er is.
     private static void InspectWorkerConfiguration(ApplicationSettings settings, List<string> lines, List<string> warnings, List<string> errors)
-    {
-        var (ok, text) = CheckTranscriptionRuntime(settings);
-        if (ok)
-        {
-            lines.Add(text);
-        }
-        else
-        {
-            warnings.Add(text);
-        }
-
-        lines.Add(WorkerProductionProfile.BuildSummary(settings));
-    }
-
-    public static (bool Ok, string Text) CheckTranscriptionRuntime(ApplicationSettings settings)
     {
         if (!settings.Worker.WhisperXEnabled)
         {
-            return (false, "Uitschrijven staat uit in de instellingen. Opnemen werkt wel.");
+            warnings.Add("WhisperX worker staat uit. Opnemen werkt wel, maar automatische transcriptie, import, watch folders en retention worden dan niet uitgevoerd.");
+            return;
         }
 
-        var missing = new List<string>();
-        if (!TryResolveExecutable(settings.Worker.PythonExe, out _))
+        InspectExternalDependency("Python", settings.Worker.PythonExe, required: true, lines, errors);
+        InspectExternalDependency("FFmpeg", settings.Worker.FfmpegPath, required: true, lines, errors);
+        lines.Add("Herstelhulp: gebruik install-prereqs.ps1 in de bundle-root voor dependency-check en worker-venv-bootstrap.");
+        lines.Add(WorkerProductionProfile.BuildSummary(settings));
+
+
+        if (settings.Worker.Import.WatchFolderEnabled)
         {
-            missing.Add("Python-omgeving");
-        }
+            if (settings.Worker.Import.WatchFolders.Count == 0)
+            {
+                warnings.Add("Watch folder verwerking staat aan maar er zijn nog geen watch folders geconfigureerd.");
+            }
+            else
+            {
+                foreach (var watchFolder in settings.Worker.Import.WatchFolders.Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    if (string.IsNullOrWhiteSpace(watchFolder))
+                    {
+                        continue;
+                    }
 
-        if (!TryResolveExecutable(settings.Worker.FfmpegPath, out _) && !TryResolveExecutable("ffmpeg", out _))
-        {
-            missing.Add("FFmpeg");
-        }
+                    try
+                    {
+                        if (Directory.Exists(watchFolder))
+                        {
+                            _ = Directory.EnumerateFileSystemEntries(watchFolder).Take(1).ToList();
+                            lines.Add($"Watch folder bereikbaar: {watchFolder}");
+                        }
+                        else
+                        {
+                            warnings.Add($"Watch folder bestaat nog niet: {watchFolder}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        errors.Add($"Watch folder niet leesbaar: {watchFolder} ({ex.Message})");
+                    }
+                }
+            }
 
-        if (missing.Count > 0)
-        {
-            return (false, $"Uitschrijven is nog niet geinstalleerd ({string.Join(" en ", missing)} ontbreekt). Voer install-prereqs.ps1 uit in de programmamap; tot die tijd blijven opnames wachten.");
+            var helperPath = ResolveCurrentExecutableCandidate();
+            if (helperPath is not null)
+            {
+                lines.Add($"Import helper beschikbaar: {helperPath}");
+            }
+            else
+            {
+                warnings.Add("Import helper executable kon niet worden bevestigd. Watch folder ingest vereist een beschikbare " + Branding.ExecutableBaseName + ".exe in de programmamap.");
+            }
         }
-
-        return (true, "Uitschrijven is klaar voor gebruik.");
     }
 
     private static string? InspectCaptureDevice(string deviceId, MMDevice? defaultMic, List<string> lines, List<string> warnings, List<string> errors)
@@ -185,14 +203,32 @@ internal static class PreflightCheckService
 
             if (defaultRender is not null && !string.Equals(defaultRender.ID, renderDevice.ID, StringComparison.OrdinalIgnoreCase))
             {
-                warnings.Add("Het gekozen pc-geluid is niet het standaard afspeelapparaat van Windows. Teams, Zoom en de browser spelen meestal af via het standaardapparaat; controleer of je de anderen hoort in de opname.");
+                warnings.Add("De gekozen systeemaudio is niet het huidige standaard afspeelapparaat. Audio van Teams/Zoom/Browser komt vaak op het standaard afspeelapparaat uit; kies dus bewust het juiste renderdevice.");
             }
             return renderDevice.FriendlyName;
         }
         catch (Exception ex)
         {
-            errors.Add($"Het apparaat voor het pc-geluid kan niet worden geopend: {ex.Message}");
+            errors.Add($"Systeemaudio-device kan niet worden geopend: {ex.Message}");
             return null;
+        }
+    }
+
+    private static void InspectExternalDependency(string label, string configuredValue, bool required, List<string> lines, List<string> errors)
+    {
+        if (TryResolveExecutable(configuredValue, out var resolvedPath))
+        {
+            lines.Add($"{label} bereikbaar: {resolvedPath}");
+            return;
+        }
+
+        var message = string.IsNullOrWhiteSpace(configuredValue)
+            ? $"{label} pad ontbreekt."
+            : $"{label} niet gevonden of niet uitvoerbaar: {configuredValue}";
+
+        if (required)
+        {
+            errors.Add($"{message} Herstel: voer install-prereqs.ps1 uit of stel in Instellingen een geldig pad in.");
         }
     }
 
@@ -247,4 +283,13 @@ internal static class PreflightCheckService
         return false;
     }
 
+    private static string? ResolveCurrentExecutableCandidate()
+    {
+        var candidates = new[]
+        {
+            Path.Combine(AppContext.BaseDirectory, Branding.ExecutableBaseName + ".exe")
+        };
+
+        return candidates.FirstOrDefault(File.Exists);
+    }
 }

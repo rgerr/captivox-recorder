@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace Captivox.Recorder.Models;
+namespace LocalCaptureAgent.Models;
 
 public sealed class CaptureDiagnostics
 {

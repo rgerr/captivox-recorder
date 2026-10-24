@@ -1,13 +1,12 @@
 using Microsoft.Win32;
 using System.Diagnostics;
 
-namespace Captivox.Recorder.Services;
+namespace LocalCaptureAgent.Services;
 
 internal static class WindowsStartupService
 {
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    // Eigen naam: een andere Captivox-installatie op dezelfde pc houdt zijn eigen opstartregel.
-    private const string ValueName = "CaptivoxRecorderFree";
+    private const string ValueName = Branding.InstanceName;
 
     public static void Apply(bool enabled, bool startMinimized)
     {

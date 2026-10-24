@@ -1,6 +1,8 @@
 [CmdletBinding()]
 param(
-    [string]$RuntimeRoot = $(if ($env:CAPTIVOX_APPDATA_ROOT) { Join-Path $env:CAPTIVOX_APPDATA_ROOT 'runtime\whispercpp' } else { Join-Path $env:LOCALAPPDATA 'CaptivoxRecorderFree\runtime\whispercpp' }),
+    # De runtime-map in de gegevensmap van de app (<gegevensmap>\runtime\whispercpp). Verplicht: install-prereqs.ps1 geeft
+    # hem mee, zodat dit script nooit de runtime van een andere Captivox-installatie test of aanpast.
+    [string]$RuntimeRoot = '',
     [string]$FfmpegPath = '',
     [string]$ModelPath = '',
     [switch]$NoDownload,
@@ -8,6 +10,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if ([string]::IsNullOrWhiteSpace($RuntimeRoot)) {
+    throw 'Geef -RuntimeRoot op: de map runtime\whispercpp in de gegevensmap van de app (install-prereqs.ps1 doet dat zelf).'
+}
+$RuntimeRoot = [System.IO.Path]::GetFullPath($RuntimeRoot)
 if ($PSVersionTable.PSVersion.Major -ge 7) { $PSNativeCommandUseErrorActionPreference = $false }
 
 function Resolve-CommandPath([string]$Name, [string]$ExplicitPath = '') {
@@ -83,7 +89,7 @@ function Ensure-Model([string]$Path, [string]$FileName) {
     $tmp = "$Path.download"
     Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
     try {
-        Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -TimeoutSec 1800 -Headers @{ 'User-Agent' = 'CaptivoxRecorderFree-AMD-GPU-selftest' }
+        Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -TimeoutSec 1800 -Headers @{ 'User-Agent' = 'CaptivoxRecorder-AMD-GPU-selftest' }
         if (-not (Test-Path -LiteralPath $tmp)) { return $false }
         $downloaded = Get-Item -LiteralPath $tmp -ErrorAction Stop
         if ($downloaded.Length -lt 1048576) {
@@ -202,7 +208,7 @@ foreach ($candidate in $modelCandidates) {
 }
 
 $result = [ordered]@{
-    version = 'v7.16.0'
+    version = 1
     engine = 'FFmpeg Whisper GPU'
     runtime_root = $RuntimeRoot
     ffmpeg = $ffmpeg
@@ -227,7 +233,7 @@ if ($null -eq $success) {
 }
 
 $manifest = [ordered]@{
-    version = 'v7.16.0'
+    version = 1
     engine = 'FFmpeg Whisper GPU'
     ffmpeg = $ffmpeg
     selected_model_path = $success.model

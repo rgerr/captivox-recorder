@@ -1,24 +1,18 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
-using Captivox.Recorder.Models;
+using LocalCaptureAgent.Models;
 
-namespace Captivox.Recorder.Services;
+namespace LocalCaptureAgent.Services;
 
 internal static class SessionRecoveryService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
-    private static IEnumerable<string> GetSessionRoots(ApplicationSettings settings)
-        => new[] { settings.Ui.OutputRoot }
-            .Concat(settings.Worker.KnownSessionRoots ?? new List<string>())
-            .Where(x => !string.IsNullOrWhiteSpace(x) && Directory.Exists(x))
-            .Distinct(StringComparer.OrdinalIgnoreCase);
-
     public static int RecoverInterruptedSessions(ApplicationSettings settings, TimeSpan staleAfter)
     {
         var recovered = 0;
-        foreach (var root in GetSessionRoots(settings))
+        foreach (var root in SessionInventoryService.GetSessionRoots(settings))
         {
             IEnumerable<string> dirs;
             try { dirs = Directory.EnumerateDirectories(root); }
@@ -79,7 +73,7 @@ internal static class SessionRecoveryService
     public static TranscriptionQueueRecoveryResult RecoverInterruptedTranscriptions(ApplicationSettings settings, TimeSpan staleAfter)
     {
         var result = new TranscriptionQueueRecoveryResult();
-        foreach (var root in GetSessionRoots(settings))
+        foreach (var root in SessionInventoryService.GetSessionRoots(settings))
         {
             IEnumerable<string> dirs;
             try { dirs = Directory.EnumerateDirectories(root); }
@@ -190,6 +184,96 @@ internal static class SessionRecoveryService
         }
 
         return result;
+    }
+
+    // Opnieuw uitschrijven op verzoek van de gebruiker: een afgeronde, onderbroken of mislukte opname met audio waar de worker
+    // nu niet mee bezig is. Een bestaand transcript gaat opzij (niet weg: het krijgt de tijd erachter); de worker pakt de
+    // opname daarna weer op via de READY-marker, zoals na een gewone opname.
+    internal static bool IsRetranscribableStatus(string? status)
+        => Normalize(status) is "completed" or "interrupted" or "failed" or "error";
+
+    public static bool TryRequeueTranscription(string sessionDirectory, out string reason)
+    {
+        var manifestPath = Path.Combine(sessionDirectory, "manifest.json");
+        if (!File.Exists(manifestPath))
+        {
+            reason = "De gegevens van deze opname (manifest.json) ontbreken.";
+            return false;
+        }
+
+        if (!File.Exists(Path.Combine(sessionDirectory, "audio_mix.wav")))
+        {
+            reason = "De opname zelf (audio_mix.wav) ontbreekt; er is niets om uit te schrijven.";
+            return false;
+        }
+
+        if (File.Exists(Path.Combine(sessionDirectory, ".transcription.claim")))
+        {
+            reason = "Deze opname wordt op dit moment uitgeschreven.";
+            return false;
+        }
+
+        var manifest = JsonSerializer.Deserialize<SessionManifest>(File.ReadAllText(manifestPath), JsonOptions);
+        if (manifest is null)
+        {
+            reason = "De gegevens van deze opname (manifest.json) zijn niet te lezen.";
+            return false;
+        }
+
+        if (!IsRetranscribableStatus(manifest.Status))
+        {
+            reason = "Alleen een afgeronde, onderbroken of mislukte opname kan opnieuw worden uitgeschreven.";
+            return false;
+        }
+
+        if (Normalize(manifest.TranscriptionStatus) is "started" or "processing" or "running")
+        {
+            reason = "Deze opname wordt op dit moment uitgeschreven.";
+            return false;
+        }
+
+        var stamp = DateTimeOffset.Now.ToString("yyyyMMdd-HHmmss");
+        foreach (var path in new[] { SessionArtifactPathService.ResolveTranscriptTextPath(sessionDirectory), SessionArtifactPathService.ResolveTranscriptJsonPath(sessionDirectory) })
+        {
+            if (File.Exists(path))
+            {
+                File.Move(path, $"{path}.vorige-{stamp}");
+            }
+        }
+
+        // De merktekens van de vorige ronde horen niet bij de nieuwe; de worker zet ze opnieuw.
+        foreach (var marker in new[] { "TRANSCRIBED", "TRANSCRIPTION_FAILED" })
+        {
+            var markerPath = Path.Combine(sessionDirectory, marker);
+            if (File.Exists(markerPath))
+            {
+                File.Delete(markerPath);
+            }
+        }
+
+        // Een onderbroken of mislukte opname met audio telt na opnieuw klaarzetten als afgerond, zodat de worker haar oppakt.
+        if (!string.Equals(Normalize(manifest.Status), "completed", StringComparison.Ordinal))
+        {
+            manifest.Status = "completed";
+            manifest.FinishedAt ??= manifest.LastHeartbeatAt ?? DateTimeOffset.Now;
+            manifest.ErrorCode = null;
+            manifest.ErrorMessage = null;
+        }
+
+        manifest.TranscriptionStatus = "ready_for_transcription";
+        manifest.TranscriptionStartedAt = null;
+        manifest.TranscriptionFinishedAt = null;
+        manifest.TranscriptionFinishedAtAuthority = null;
+        manifest.TranscriptionError = null;
+        manifest.TranscriptionAttempts = 0;
+        manifest.LastHeartbeatAt = DateTimeOffset.Now;
+        manifest.RecoveryStatus = "transcription_requeued_manual";
+        manifest.RecoveryNotes = "Op verzoek van de gebruiker opnieuw klaargezet om uit te schrijven.";
+        WriteManifest(manifestPath, manifest);
+        File.WriteAllText(Path.Combine(sessionDirectory, "READY"), $"ready={DateTimeOffset.Now:O}{Environment.NewLine}meeting_id={manifest.MeetingId}{Environment.NewLine}", Encoding.UTF8);
+        AppendSessionLog(sessionDirectory, "Opnieuw uitschrijven op verzoek: bestaand transcript opzij gezet en READY-marker geschreven.");
+        reason = string.Empty;
+        return true;
     }
 
     private static void WriteManifest(string manifestPath, SessionManifest manifest)

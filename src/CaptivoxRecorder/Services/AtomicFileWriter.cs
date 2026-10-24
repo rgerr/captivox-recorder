@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace Captivox.Recorder.Services;
+namespace LocalCaptureAgent.Services;
 
 internal static class AtomicFileWriter
 {
@@ -22,7 +22,7 @@ internal static class AtomicFileWriter
         try
         {
             File.WriteAllText(tempPath, contents, encoding);
-            // Een lezer (bijvoorbeeld de worker) die het doelbestand net open heeft, laat de vervanging even mislukken.
+            // Een lezer (bijvoorbeeld een virusscanner) die het doelbestand net open heeft, laat de vervanging even mislukken.
             for (var attempt = 1; ; attempt++)
             {
                 try

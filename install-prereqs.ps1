@@ -5,7 +5,9 @@ param(
     [switch]$SkipAppSettings,
     [switch]$OverwriteExistingAppSettings,
     [switch]$RebuildVenv,
-    [switch]$PrepareAmdGpuRuntime
+    [switch]$PrepareAmdGpuRuntime,
+    # Optioneel een andere gegevensmap (bijvoorbeeld voor een test); zonder deze parameter de vaste map van deze smaak.
+    [string]$AppDataRoot = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -16,7 +18,9 @@ if ($PSVersionTable.PSVersion.Major -ge 7) {
 $script:Warnings = New-Object System.Collections.Generic.List[string]
 $script:Blockers = New-Object System.Collections.Generic.List[string]
 $script:Summary = New-Object System.Collections.Generic.List[string]
-$script:InstallLogRoot = Join-Path ([System.IO.Path]::GetTempPath()) 'CaptivoxRecorderFreePrereqs'
+# De gegevensmap van deze smaak. build.ps1 zet hier bij het bouwen de map van de gekozen smaak neer.
+$script:ProductFolder = 'CaptivoxRecorderFree'
+$script:InstallLogRoot = Join-Path ([System.IO.Path]::GetTempPath()) ($script:ProductFolder + 'Prereqs')
 New-Item -ItemType Directory -Path $script:InstallLogRoot -Force | Out-Null
 
 function Add-WarningLine([string]$Message) {
@@ -33,13 +37,13 @@ function Add-Summary([string]$Message) {
     $script:Summary.Add($Message) | Out-Null
 }
 
-# De gratis editie gebruikt een eigen map, los van een eventuele andere Captivox-installatie.
-# CAPTIVOX_APPDATA_ROOT overschrijft die map, net als in de recorder en de worker.
+# Elke smaak gebruikt een eigen map, los van een eventuele andere Captivox-installatie. Alleen -AppDataRoot kan die map
+# vervangen; omgevingsvariabelen spelen geen rol, zodat dit script nooit de map van een andere installatie gebruikt.
 function Get-AppDataRoot {
-    if (-not [string]::IsNullOrWhiteSpace($env:CAPTIVOX_APPDATA_ROOT)) {
-        return [string]$env:CAPTIVOX_APPDATA_ROOT
+    if (-not [string]::IsNullOrWhiteSpace($AppDataRoot)) {
+        return [System.IO.Path]::GetFullPath($AppDataRoot)
     }
-    return Join-Path $env:LOCALAPPDATA 'CaptivoxRecorderFree'
+    return Join-Path $env:LOCALAPPDATA $script:ProductFolder
 }
 
 function Get-DefaultVenvPath {
@@ -662,7 +666,7 @@ function Install-WorkerStack([string]$VenvPython, [string]$InstallSpecPath, [str
                 Add-Blocker "Dependency-resolverconflict in $InstallSpecPath. Top-level pins botsen; schone venv-herbouw helpt hier niet. Zie log: $($installResult.LogPath)"
             }
             else {
-                Add-Blocker "Dependency-resolverconflict in $InstallSpecPath. Top-level pins botsen; schone venv-herbouw helpt hier niet. Samenvatting: $summary. Zie log: $($installResult.LogPath)"
+                Add-Blocker "Dependency-resolverconflict in $InstallSpecPath. Top-level pins botsen; schone venv-herbouw helpt hier niet. Overzicht: $summary. Zie log: $($installResult.LogPath)"
             }
         }
         else {
@@ -694,6 +698,7 @@ function Install-WorkerStack([string]$VenvPython, [string]$InstallSpecPath, [str
         LogPath = $installResult.LogPath
     }
 }
+
 
 
 
@@ -1006,6 +1011,26 @@ function Configure-CaptivoxSettings([string]$VenvPython, [string]$FFmpegPath, [b
         $changed = $true
     }
 
+    $stableDiarizationModel = if ($worker.PSObject.Properties['stableDiarizationModel']) { [string]$worker.stableDiarizationModel } else { '' }
+    if ([string]::IsNullOrWhiteSpace($stableDiarizationModel) -or $stableDiarizationModel -eq 'pyannote/speaker-diarization-community-1') {
+        Set-ObjectProperty -Target $worker -Name 'stableDiarizationModel' -Value 'pyannote/speaker-diarization-3.1'
+        Add-Summary 'Standaard diarizationmodel gemigreerd naar pyannote/speaker-diarization-3.1.'
+        $changed = $true
+    }
+    $experimentalDiarizationModel = if ($worker.PSObject.Properties['experimentalDiarizationModel']) { [string]$worker.experimentalDiarizationModel } else { '' }
+    if ([string]::IsNullOrWhiteSpace($experimentalDiarizationModel)) {
+        Set-ObjectProperty -Target $worker -Name 'experimentalDiarizationModel' -Value 'pyannote/speaker-diarization-community-1'
+        Add-Summary 'Experimenteel diarizationmodel vastgelegd als pyannote/speaker-diarization-community-1.'
+        $changed = $true
+    }
+
+    $diarizationAcceleration = if ($worker.PSObject.Properties['diarizationAcceleration']) { [string]$worker.diarizationAcceleration } else { '' }
+    if ([string]::IsNullOrWhiteSpace($diarizationAcceleration)) {
+        Set-ObjectProperty -Target $worker -Name 'diarizationAcceleration' -Value 'auto'
+        Add-Summary 'Diarizationversnelling ingesteld op auto: GPU-sidecar wordt alleen gebruikt wanneer die expliciet beschikbaar en gevalideerd is; anders blijft CPU de veilige route.'
+        $changed = $true
+    }
+
     $settingsPath = Get-AppSettingsPath
     $settingsDirectory = Split-Path -Parent $settingsPath
     if (-not (Test-Path -LiteralPath $settingsDirectory)) {
@@ -1102,7 +1127,7 @@ function Ensure-AmdGpuRuntimeIfRequested([string]$BundleRoot) {
 
     try {
         Write-Host '== AMD GPU-route voor transcriptie valideren' -ForegroundColor Cyan
-        & $testScript
+        & $testScript -RuntimeRoot (Join-Path (Get-AppDataRoot) 'runtime\whispercpp')
         Add-Summary 'AMD GPU-route voor transcriptie is gevalideerd via FFmpeg Whisper GPU.'
         return
     }
@@ -1118,8 +1143,8 @@ function Ensure-AmdGpuRuntimeIfRequested([string]$BundleRoot) {
 
     try {
         Write-Host '== Secundaire AMD GPU-runtime via whisper.cpp Vulkan voorbereiden' -ForegroundColor Cyan
-        & $buildScript -Clean
-        & $testScript
+        & $buildScript -Clean -RuntimeRoot (Join-Path (Get-AppDataRoot) 'runtime\whispercpp')
+        & $testScript -RuntimeRoot (Join-Path (Get-AppDataRoot) 'runtime\whispercpp')
         Add-Summary 'Secundaire AMD GPU-runtime via whisper.cpp Vulkan is gebouwd en getest.'
     }
     catch {
@@ -1186,7 +1211,7 @@ if ($appSettingsPath) {
 }
 
 Write-Host ''
-Write-Host 'Samenvatting' -ForegroundColor Cyan
+Write-Host 'Overzicht' -ForegroundColor Cyan
 Write-Host "- Bundle root: $bundleRoot"
 Write-Host "- Requirements: $requirementsPath"
 Write-Host "- Installatiespecificatie: $installSpecPath"

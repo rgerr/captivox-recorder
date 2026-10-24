@@ -1,5 +1,18 @@
 # Wijzigingen
 
+## 2.0.0 (2026-10-24)
+
+Nieuwe opzet van het programma, met een overzichtelijke indeling.
+
+- Links een vaste indeling: *Vandaag*, *Overleggen*, *Meldingen* en *Instellingen*, met de opnameknop altijd bovenin.
+- *Vandaag*: grote opnameknop, wat aandacht nodig heeft (een mislukte of onderbroken opname) en de laatste meldingen.
+- *Overleggen*: alle gesprekken met zoeken en een periode, de uitgeschreven tekst ernaast, en per gesprek opslaan als tekst of ondertitels, naam geven, opnieuw uitschrijven of weggooien. Audio importeren zit hier ook.
+- *Meldingen*: de laatste meldingen van het programma, ook na een herstart.
+- *Instellingen*: opnemen, meldingen, opslag en bewaren, en geavanceerd (met de oudere, uitgebreide schermen).
+- Het venster tonen of verbergen kan met Ctrl+Shift+F10.
+- Met een AMD-videokaart zonder voorbereide AMD-route schrijft Captivox nu gewoon uit op de processor in plaats van te stoppen.
+- De gegevensmap (`%LOCALAPPDATA%\CaptivoxRecorderFree`), de opslagmap en het installatieprogramma blijven hetzelfde; 2.0.0 installeert over 1.x heen.
+
 ## 1.1.1 (2026-10-24)
 
 - `install-prereqs.ps1` zet geen instellingen voor sprekerherkenning meer en meldt daar ook niets meer over.

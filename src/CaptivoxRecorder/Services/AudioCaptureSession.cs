@@ -1,11 +1,11 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
-using Captivox.Recorder.Models;
+using LocalCaptureAgent.Models;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
-namespace Captivox.Recorder.Services;
+namespace LocalCaptureAgent.Services;
 
 public sealed class AudioCaptureSession : IDisposable
 {
@@ -24,16 +24,14 @@ public sealed class AudioCaptureSession : IDisposable
     private MMDevice? _micDevice;
     private MMDevice? _systemDevice;
     private SessionManifest? _manifest;
-    // v8.18.0: een gestorven capture-thread bleef alleen in het sessielogboek staan. Op
-    // 2026-09-08 stopten beide threads om 15:37 en merkte niemand dat pas om 21:06, toen de
-    // gebruiker zelf op stop drukte. De UI-monitor leest deze twee nu elke tick.
+    // Een gestorven capture-thread mag niet alleen in het sessielogboek staan: dan merkt niemand het tot de gebruiker zelf
+    // op stop drukt. De UI-monitor leest deze twee elke tick.
     public bool CaptureFailed { get; private set; }
     public string? CaptureFailureSummary { get; private set; }
 
-    // v8.19.0: sinds v8.17.0 gooit de stemwriter niet meer op de 4 GiB-grens maar kapt hij stil
-    // af. De capture leeft dan door, de niveaus blijven binnenkomen en CaptureFailed blijft
-    // false, terwijl alle nieuwe audio verdwijnt. Precies het scenario van 8 september, dus
-    // de monitor moet dit apart zien, en liefst ruim voordat het gebeurt.
+    // De stemwriter gooit op de 4 GiB-grens geen fout maar kapt stil af. De capture leeft dan
+    // door, de niveaus blijven binnenkomen en CaptureFailed blijft false, terwijl alle nieuwe
+    // audio verdwijnt. De monitor moet dit dus apart zien, en liefst ruim voordat het gebeurt.
     public bool CapacityReached
         => (_micWriter?.CapacityReached ?? false) || (_systemWriter?.CapacityReached ?? false);
 

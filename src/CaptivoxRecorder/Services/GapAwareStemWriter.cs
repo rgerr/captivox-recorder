@@ -1,6 +1,6 @@
 using NAudio.Wave;
 
-namespace Captivox.Recorder.Services;
+namespace LocalCaptureAgent.Services;
 
 internal sealed class GapAwareStemWriter : IDisposable
 {

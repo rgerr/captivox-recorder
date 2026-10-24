@@ -1,10 +1,10 @@
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
-using Captivox.Recorder.Models;
-using Captivox.Recorder.Services;
+using LocalCaptureAgent.Models;
+using LocalCaptureAgent.Services;
 
-namespace Captivox.Recorder;
+namespace LocalCaptureAgent;
 
 internal static class AppRuntime
 {
@@ -15,9 +15,6 @@ internal static class AppRuntime
     private static string? _activeManifestPath;
     private static string? _activeSessionLogPath;
 
-    // De gratis versie heeft een eigen gegevensmap (Branding.AppDataFolder), zodat hij op dezelfde pc nooit de
-    // instellingen of de transcriptie-omgeving van een andere Captivox-installatie raakt. CAPTIVOX_APPDATA_ROOT
-    // wijst voor testen een andere map aan.
     public static string GetAppDataDirectory()
     {
         if (!string.IsNullOrWhiteSpace(_resolvedAppDataDirectory))
@@ -32,13 +29,15 @@ internal static class AppRuntime
                 return _resolvedAppDataDirectory!;
             }
 
-            var overridePath = Environment.GetEnvironmentVariable("CAPTIVOX_APPDATA_ROOT");
-            var path = !string.IsNullOrWhiteSpace(overridePath)
+            // De override (eigen naam per smaak, zie Branding) is alleen voor tests in een afgeschermde map. Er wordt nooit
+            // iets overgenomen uit de gegevensmap van een andere Captivox.
+            var overridePath = Environment.GetEnvironmentVariable(Branding.AppDataOverrideVariable);
+            var preferredPath = !string.IsNullOrWhiteSpace(overridePath)
                 ? Path.GetFullPath(overridePath)
                 : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), ProductFolder);
-            Directory.CreateDirectory(path);
-            _resolvedAppDataDirectory = path;
-            return path;
+            Directory.CreateDirectory(preferredPath);
+            _resolvedAppDataDirectory = preferredPath;
+            return preferredPath;
         }
     }
 
@@ -73,6 +72,15 @@ internal static class AppRuntime
     public static string GetLogFilePath()
         => Path.Combine(GetLogDirectory(), $"app_{DateTimeOffset.Now:yyyyMMdd}.log");
 
+
+    public static string GetSelfTestDirectory()
+    {
+        var path = Path.Combine(GetTempDirectory(), "worker_selftest_latest");
+        Directory.CreateDirectory(path);
+        return path;
+    }
+
+
     public static string GetWorkerRuntimeDirectory()
     {
         var path = Path.Combine(GetTempDirectory(), "worker_runtime");
@@ -82,6 +90,16 @@ internal static class AppRuntime
 
     public static string GetWorkerRuntimeStatePath()
         => Path.Combine(GetWorkerRuntimeDirectory(), "worker_status.json");
+
+    public static string GetRetentionRuntimeDirectory()
+    {
+        var path = Path.Combine(GetTempDirectory(), "retention_runtime");
+        Directory.CreateDirectory(path);
+        return path;
+    }
+
+    public static string GetRetentionRuntimeStatePath()
+        => Path.Combine(GetRetentionRuntimeDirectory(), "retention_status.json");
 
     public static string GetProductVersionTag()
     {
@@ -95,6 +113,7 @@ internal static class AppRuntime
 
         return NormalizeVersionTag(assembly.GetName().Version?.ToString()) ?? "v?";
     }
+
 
     public static string GetWorkerCompatibilityVersionTag()
     {
@@ -165,6 +184,7 @@ internal static class AppRuntime
 
         return normalized.StartsWith('v') ? normalized : $"v{normalized}";
     }
+
 
     public static void LogException(string title, Exception? exception)
         => SafeWrite($"[{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff}] {title}{Environment.NewLine}{exception}{Environment.NewLine}{Environment.NewLine}");
