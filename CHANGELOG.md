@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.2 (2026-10-25)
+
+- **No more invented text in transcripts**: during silence, music or background noise, the speech model sometimes writes text that nobody said, taken from its training material. Captivox now removes this before the transcript is saved: subtitle credits (such as "TV Gelderland 2021" or "Subtitles by the Amara.org community"), "thanks for watching" lines, sound markers (such as `*Knocking*`, `[Music]`, `(applause)` or `***`) and loops in which the same word or phrase repeats over and over. Real speech stays, also when a sentence happens to contain such a word. This replaces the 2.0.1 filter, which only removed lines that consisted of nothing but `***`, `...` or `[BLANK_AUDIO]`.
+- Switching to another topic in *Settings* now starts at the top of the page.
+
 ## 2.0.1 (2026-10-24)
 
 - **Interface in four languages**: English (the default for new installations), Dutch, German and French. The installer is in the same four languages and passes the language you choose to the app on a new installation; an existing installation stays in Dutch. Change the language under *Settings*, *General* (it takes effect after a restart; a button restarts Captivox for you). Dates and times follow the language of the interface. Transcription is available in Dutch, English, German, French, Spanish, Italian, Chinese and Japanese, chosen separately from the interface language.

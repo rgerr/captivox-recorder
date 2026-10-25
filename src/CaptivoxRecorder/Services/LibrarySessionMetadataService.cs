@@ -16,14 +16,14 @@ internal static class LibrarySessionMetadataService
         }
 
         var path = Path.Combine(sessionDirectory, FileName);
-        if (!File.Exists(path))
+        if (!SessionFiles.Exists(path))
         {
             return new LibrarySessionMetadata();
         }
 
         try
         {
-            var metadata = JsonSerializer.Deserialize<LibrarySessionMetadata>(File.ReadAllText(path), JsonOptions);
+            var metadata = JsonSerializer.Deserialize<LibrarySessionMetadata>(SessionFiles.ReadAllText(path), JsonOptions);
             return Normalize(metadata ?? new LibrarySessionMetadata());
         }
         catch

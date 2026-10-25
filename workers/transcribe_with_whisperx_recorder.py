@@ -340,10 +340,30 @@ def simplify_speaker(raw_speaker: Any, mapping: Dict[str, str]) -> str:
     return mapping[key]
 
 
-KNOWN_INTRO_NOISE = {
-    "ondertiteld door de amara org gemeenschap",
-    "ondertiteld door de amara org community",
-}
+# Whisper verzint bij stilte, muziek of geroezemoes tekst uit zijn trainingsmateriaal: ondertitelcredits
+# ("TV Gelderland 2021", "Ondertiteld door de Amara.org gemeenschap"), geluidsaanduidingen ("***", "*Kloppen*",
+# "[BLANK_AUDIO]") en lussen waarin hetzelfde woord tientallen keren terugkomt. Die halen we eruit voordat er iets wordt
+# weggeschreven. Echte spraak blijft staan, ook als er "Gelderland" of "ondertiteling" in een zin voorkomt.
+NON_SPEECH_MARKER_RE = re.compile(
+    r"\*{2,}|\*[^*\s](?:[^*\n]{0,30}?[^*\s])?\*|\[[^\]\n]{0,40}\]|\u266a+"
+    r"|\((?:muziek|music|musik|musique|applaus|applause|gelach|laughter|lachen|rires|stilte|silence|stille)\)",
+    re.IGNORECASE,
+)
+INLINE_HALLUCINATION_RE = re.compile(r"(?:ondertiteling\s+)?tv\s+gelderland\s+20\d\d\.?", re.IGNORECASE)
+REPETITION_LOOP_RE = re.compile(r"(\b[^\s,.!?]+(?:\s+[^\s,.!?]+){0,3}?)(?:[\s,.!?]+\1\b){7,}", re.IGNORECASE)
+# Op genormaliseerde tekst (kleine letters, leestekens weg); alleen een kort stuk telt, zodat een echte zin blijft staan.
+HALLUCINATION_PHRASE_RES = [(re.compile(pattern), max_words) for pattern, max_words in (
+    (r"^(?:ondertiteling )?tv gelderland(?: \d{4})?$", 4),
+    (r"^ondertitel\w* (?:ingediend |gemaakt |verzorgd )?door\b", 10),
+    (r"\bamara org\b", 15),
+    (r"^(?:bedankt|dank je wel|dankjewel) voor het kijken$", 5),
+    (r"\babonneer\w*\b.*\bkanaal\b", 12),
+    (r"^thanks? (?:you )?for watching$", 4),
+    (r"^subtitles? by\b", 10),
+    (r"^untertitel\w*\b.*\b(?:zdf|ard|funk)\b", 12),
+    (r"^untertitel\w* (?:von|im auftrag)\b", 10),
+    (r"^sous titr\w*\b", 12),
+)]
 
 
 def normalize_noise_text(text: str) -> str:
@@ -351,51 +371,51 @@ def normalize_noise_text(text: str) -> str:
     return " ".join(value.split())
 
 
-def remove_known_intro_noise(serializable: Dict[str, Any]) -> int:
+def clean_whisper_artifact_text(text: str) -> str:
+    value = INLINE_HALLUCINATION_RE.sub(" ", text)
+    value = NON_SPEECH_MARKER_RE.sub(" ", value)
+    value = REPETITION_LOOP_RE.sub(r"\1", value)
+    value = re.sub(r"\s+([,.!?])", r"\1", " ".join(value.split()))
+    return value.strip()
+
+
+def is_whisper_hallucination(text: str) -> bool:
+    normalized = normalize_noise_text(text)
+    if not normalized:
+        return True
+    word_count = len(normalized.split())
+    return any(word_count <= max_words and pattern.search(normalized) for pattern, max_words in HALLUCINATION_PHRASE_RES)
+
+
+def remove_whisper_artifacts(serializable: Dict[str, Any]) -> Dict[str, int]:
     segments = serializable.get("segments")
     if not isinstance(segments, list):
-        return 0
+        return {"removed": 0, "cleaned": 0}
 
-    cleaned: List[Dict[str, Any]] = []
-    removed = 0
-    for index, seg in enumerate(segments):
+    kept: List[Any] = []
+    removed = cleaned = 0
+    for seg in segments:
         if not isinstance(seg, dict):
-            cleaned.append(seg)
+            kept.append(seg)
             continue
-        text = str(seg.get("text", "") or "").strip()
-        start = float(seg.get("start", 0.0) or 0.0)
-        if index < 3 and start <= 15.0 and normalize_noise_text(text) in KNOWN_INTRO_NOISE:
+        text = str(seg.get("text", "") or "")
+        new_text = clean_whisper_artifact_text(text)
+        if is_whisper_hallucination(new_text):
             removed += 1
             continue
-        cleaned.append(seg)
+        if new_text != text.strip():
+            cleaned += 1
+            seg["text"] = new_text
+            if isinstance(seg.get("words"), list):
+                seg["words"] = [w for w in seg["words"] if not isinstance(w, dict) or normalize_noise_text(NON_SPEECH_MARKER_RE.sub(" ", str(w.get("word", "") or "")))]
+        kept.append(seg)
 
-    if removed:
-        serializable["segments"] = cleaned
-    return removed
-
-
-# Stukken zonder spraak die een spraakmodel soms in stiltes zet: alleen sterretjes, puntjes of streepjes, of een
-# markering als [BLANK_AUDIO]. Bewust voorzichtig: alleen stukken die uit niets anders bestaan.
-NON_SPEECH_ONLY = re.compile(r"^[\s*.\u2026\u00b7\-_~]*$")
-NON_SPEECH_MARKER = re.compile(r"^[\[(]\s*(blank[_ ]audio|silence|stilte|no speech|music|muziek|applause|applaus)\s*[\])]$", re.IGNORECASE)
-
-
-def is_non_speech_text(text: str) -> bool:
-    value = (text or "").strip()
-    return bool(NON_SPEECH_ONLY.match(value) or NON_SPEECH_MARKER.match(value))
-
-
-def remove_non_speech_segments(serializable: Dict[str, Any]) -> int:
-    segments = serializable.get("segments")
-    if not isinstance(segments, list):
-        return 0
-    kept = [seg for seg in segments if not (isinstance(seg, dict) and is_non_speech_text(str(seg.get("text", "") or "")))]
-    removed = len(segments) - len(kept)
-    if removed:
+    if removed or cleaned:
         serializable["segments"] = kept
-        serializable["removed_non_speech_segments"] = int(serializable.get("removed_non_speech_segments") or 0) + removed
-        eprint(f"INFO: {removed} stuk(ken) zonder spraak weggelaten (alleen tekens als *** of ..., of [BLANK_AUDIO])")
-    return removed
+        serializable["whisper_artifacts_removed"] = int(serializable.get("whisper_artifacts_removed") or 0) + removed
+        serializable["whisper_artifacts_cleaned"] = int(serializable.get("whisper_artifacts_cleaned") or 0) + cleaned
+        eprint(f"INFO: verzonnen Whisper-tekst verwijderd: {removed} stukken weg, {cleaned} stukken opgeschoond")
+    return {"removed": removed, "cleaned": cleaned}
 
 
 def merge_segments(
@@ -2173,8 +2193,8 @@ def write_transcript_artifacts(serializable: Dict[str, Any], args) -> None:
     """
     receipt = transcript_receipt_path(args)
     receipt.unlink(missing_ok=True)
-    # In elke route (WhisperX, FFmpeg Whisper, whisper.cpp): stukken zonder spraak niet in de tekst.
-    remove_non_speech_segments(serializable)
+    # In elke route (WhisperX, FFmpeg Whisper, whisper.cpp): verzonnen tekst en stukken zonder spraak niet in de tekst.
+    remove_whisper_artifacts(serializable)
     text_output, json_output = build_outputs(serializable, getattr(args, "output_format", "txt+json"))
     srt_output, vtt_output = build_subtitle_outputs(serializable)
     outputs = {}
@@ -2756,9 +2776,7 @@ def main() -> int:
             diarization_status = "disabled"
             eprint("INFO: diarization overgeslagen op basis van instellingen.")
 
-        removed_intro_noise = remove_known_intro_noise(serializable)
-        if removed_intro_noise:
-            eprint(f"INFO: bekende openingsruis verwijderd uit transcriptsegmenten: {removed_intro_noise}")
+        remove_whisper_artifacts(serializable)
 
         serializable["diarization_requested"] = bool(args.enable_diarization)
         serializable["diarization_engine"] = "pyannote" if args.enable_diarization else None

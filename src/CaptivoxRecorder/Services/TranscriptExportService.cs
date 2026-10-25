@@ -8,7 +8,7 @@ internal static class TranscriptExportService
     public static void EnsureAdjacentExports(string sessionDir)
     {
         var jsonPath = SessionArtifactPathService.ResolveTranscriptJsonPath(sessionDir);
-        if (!File.Exists(jsonPath))
+        if (!SessionFiles.Exists(jsonPath))
         {
             return;
         }
@@ -22,13 +22,13 @@ internal static class TranscriptExportService
     public static string? ReadTranscriptText(string sessionDir)
     {
         var txtPath = SessionArtifactPathService.ResolveTranscriptTextPath(sessionDir);
-        if (File.Exists(txtPath))
+        if (SessionFiles.Exists(txtPath))
         {
-            return File.ReadAllText(txtPath);
+            return SessionFiles.ReadAllText(txtPath);
         }
 
         var jsonPath = SessionArtifactPathService.ResolveTranscriptJsonPath(sessionDir);
-        if (!File.Exists(jsonPath))
+        if (!SessionFiles.Exists(jsonPath))
         {
             return null;
         }
@@ -86,7 +86,7 @@ internal static class TranscriptExportService
 
     private static List<TranscriptSegment> ReadSegments(string transcriptJsonPath)
     {
-        using var document = JsonDocument.Parse(File.ReadAllText(transcriptJsonPath));
+        using var document = JsonDocument.Parse(SessionFiles.ReadAllText(transcriptJsonPath));
         if (!document.RootElement.TryGetProperty("segments", out var segmentsElement) || segmentsElement.ValueKind != JsonValueKind.Array)
         {
             return new List<TranscriptSegment>();

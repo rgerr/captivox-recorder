@@ -34,6 +34,13 @@ internal static class SessionInventoryService
         return roots.Values.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
+    // De mappen waarvan de lijsten en het zoeken de opnames tonen. GetSessionRoots blijft alle mappen geven (de wachtrij en het
+    // herstel na een onderbreking gelden voor alle opnames).
+    public static IReadOnlyList<string> GetLibraryRoots(ApplicationSettings settings)
+    {
+        return GetSessionRoots(settings);
+    }
+
     public static SessionQueueSnapshot ScanQueue(ApplicationSettings settings, int maxSessions = 250)
     {
         var snapshot = new SessionQueueSnapshot();

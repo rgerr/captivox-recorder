@@ -47,7 +47,7 @@ internal static class SessionArtifactPathService
         foreach (var relative in relativeCandidates)
         {
             var candidate = Path.Combine(sessionDirectory, relative);
-            if (File.Exists(candidate))
+            if (SessionFiles.Exists(candidate))
             {
                 return candidate;
             }

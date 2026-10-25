@@ -6,7 +6,7 @@
 
 Captivox Recorder records your microphone and your PC's audio at the same time (Teams, Zoom, Google Meet or any other app), then turns the conversation into text in the background with [WhisperX](https://github.com/m-bain/whisperX). Everything happens on your own computer: no cloud, no account, no telemetry.
 
-- Version: **2.0.1** (October 2026)
+- Version: **2.0.2** (October 2026)
 - Licence: [GPL-3.0](LICENSE)
 - Runs on: Windows 10 and 11 (64-bit)
 - Languages: the interface is in English, Dutch, German or French; transcription in Dutch, English, German, French, Spanish, Italian, Chinese and Japanese
@@ -50,9 +50,9 @@ More details in [PRIVACY.md](PRIVACY.md).
 
 ## Install
 
-1. **Download** `CaptivoxRecorder-2.0.1-setup.exe` from [Releases](https://github.com/rgerr/captivox-recorder/releases). If you like, check the SHA-256 against the `.sha256` file next to it:
+1. **Download** `CaptivoxRecorder-2.0.2-setup.exe` from [Releases](https://github.com/rgerr/captivox-recorder/releases). If you like, check the SHA-256 against the `.sha256` file next to it:
    ```powershell
-   Get-FileHash .\CaptivoxRecorder-2.0.1-setup.exe -Algorithm SHA256
+   Get-FileHash .\CaptivoxRecorder-2.0.2-setup.exe -Algorithm SHA256
    ```
 2. **Install**: double-click the file. The app is not digitally signed, so Windows SmartScreen may show a warning. If it does, choose *More info* and then *Run anyway*. No administrator rights are needed: Captivox is installed in `%LOCALAPPDATA%\Programs\CaptivoxRecorderFree`, with a shortcut in the Start menu.
 3. **Let it set itself up**: the same installer then downloads and sets up everything Captivox needs to transcribe, in its own folder: a private Python, FFmpeg, WhisperX and the speech models. You don't need to install anything else, and nothing is installed system-wide. This downloads about 5 GB (about 9 GB with an NVIDIA graphics card) and takes 10 to 30 minutes; a progress bar shows how far it is. Before it starts, the installer checks that there is enough free disk space (about 10 GB). There is no PowerShell window and nothing to answer.
@@ -61,7 +61,7 @@ More details in [PRIVACY.md](PRIVACY.md).
 
 **Repair or update**: run the setup again. It keeps what is already in order and only downloads or repairs what is missing. A new version installs over the old one; your recordings and settings stay where they are.
 
-**Portable version.** Prefer not to install? Download `CaptivoxRecorder-2.0.1-win-x64.zip` (also with a `.sha256` file), extract it to a folder you can write to, and run these two commands once in PowerShell in that folder (there is no installer to do it for you). The script downloads and sets up the same things as the installer:
+**Portable version.** Prefer not to install? Download `CaptivoxRecorder-2.0.2-win-x64.zip` (also with a `.sha256` file), extract it to a folder you can write to, and run these two commands once in PowerShell in that folder (there is no installer to do it for you). The script downloads and sets up the same things as the installer:
 
 ```powershell
 Get-ChildItem -Recurse | Unblock-File

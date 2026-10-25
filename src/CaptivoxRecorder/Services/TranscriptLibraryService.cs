@@ -23,7 +23,7 @@ internal static class TranscriptLibraryService
         var activeSubcontext = (subcontextFilter ?? string.Empty).Trim();
         var activeMeetingType = (meetingTypeFilter ?? string.Empty).Trim();
         var results = new List<TranscriptLibraryEntry>();
-        foreach (var root in SessionInventoryService.GetSessionRoots(settings))
+        foreach (var root in SessionInventoryService.GetLibraryRoots(settings))
         {
             cancellationToken.ThrowIfCancellationRequested();
             IEnumerable<string> dirs;

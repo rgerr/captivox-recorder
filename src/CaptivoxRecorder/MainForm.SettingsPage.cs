@@ -125,6 +125,13 @@ public sealed partial class MainForm
         if (_settingsCategoryButtons.TryGetValue(key, out var button) && !button.Checked) button.Checked = true;
         foreach (var (name, panel) in _settingsPanels) panel.Visible = name == key;
         RefreshSettingsPage();
+        // Een ander onderwerp begint bovenaan. Ook na de opbouw nog een keer: een vak dat de focus krijgt (de lijst met
+        // organisaties) schoof de kop anders half uit beeld.
+        if (_settingsContentHost is { } host)
+        {
+            host.AutoScrollPosition = new Point(0, 0);
+            if (host.IsHandleCreated) host.BeginInvoke(new Action(() => host.AutoScrollPosition = new Point(0, 0)));
+        }
     }
 
     private void OnSettingsPageShown() => RefreshSettingsPage();

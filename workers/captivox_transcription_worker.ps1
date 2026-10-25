@@ -1120,7 +1120,8 @@ function Remove-RetentionFiles {
     )
 
     $deleted = 0
-    foreach ($path in ($Candidates | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)) {
+    $all = @($Candidates | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    foreach ($path in ($all | Sort-Object -Unique)) {
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
         if (-not $path.StartsWith($SessionDir, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
         try {

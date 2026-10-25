@@ -1762,7 +1762,7 @@ public sealed partial class MainForm
 
             var path = Path.Combine(sessionDirectory, "capture_time_corrections.jsonl");
             var json = JsonSerializer.Serialize(auditEntry, new JsonSerializerOptions(JsonSerializerDefaults.Web));
-            File.AppendAllText(path, json + Environment.NewLine);
+            SessionFiles.AppendAllText(path, json + Environment.NewLine);
             return true;
         }
         catch (Exception ex)

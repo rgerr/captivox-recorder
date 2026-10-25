@@ -19,7 +19,7 @@
     <AssemblyTitle>Captivox Recorder</AssemblyTitle>
     <Product>Captivox Recorder</Product>
     <Copyright>Copyright (c) 2026 rgerr. GPL-3.0-or-later.</Copyright>
-    <Version>2.0.1</Version>
+    <Version>2.0.2</Version>
   </PropertyGroup>
 
   <PropertyGroup>

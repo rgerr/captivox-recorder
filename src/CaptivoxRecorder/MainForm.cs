@@ -1664,8 +1664,8 @@ public sealed partial class MainForm : Form
             return false;
         }
 
-        return (!string.IsNullOrWhiteSpace(entry.TranscriptTextPath) && File.Exists(entry.TranscriptTextPath))
-            || (!string.IsNullOrWhiteSpace(entry.TranscriptJsonPath) && File.Exists(entry.TranscriptJsonPath));
+        return (!string.IsNullOrWhiteSpace(entry.TranscriptTextPath) && SessionFiles.Exists(entry.TranscriptTextPath))
+            || (!string.IsNullOrWhiteSpace(entry.TranscriptJsonPath) && SessionFiles.Exists(entry.TranscriptJsonPath));
     }
 
     private void LibraryListView_MouseUp(object? sender, MouseEventArgs e)

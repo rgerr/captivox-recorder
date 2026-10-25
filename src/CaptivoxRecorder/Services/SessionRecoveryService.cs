@@ -235,9 +235,9 @@ internal static class SessionRecoveryService
         var stamp = DateTimeOffset.Now.ToString("yyyyMMdd-HHmmss");
         foreach (var path in new[] { SessionArtifactPathService.ResolveTranscriptTextPath(sessionDirectory), SessionArtifactPathService.ResolveTranscriptJsonPath(sessionDirectory) })
         {
-            if (File.Exists(path))
+            if (SessionFiles.Exists(path))
             {
-                File.Move(path, $"{path}.vorige-{stamp}");
+                SessionFiles.Move(path, $"{path}.vorige-{stamp}");
             }
         }
 

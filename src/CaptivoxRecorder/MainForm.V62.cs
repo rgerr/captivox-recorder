@@ -241,23 +241,43 @@ public sealed partial class MainForm
             ShowOwnedMessage(this, "Selecteer eerst een sessie in de bibliotheek.", "Geen sessie geselecteerd", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
-        var candidate = File.Exists(entry.TranscriptTextPath) ? entry.TranscriptTextPath : entry.TranscriptJsonPath;
-        if (string.IsNullOrWhiteSpace(candidate) || !File.Exists(candidate))
+        var candidate = SessionFiles.Exists(entry.TranscriptTextPath) ? entry.TranscriptTextPath : entry.TranscriptJsonPath;
+        if (string.IsNullOrWhiteSpace(candidate) || !SessionFiles.Exists(candidate))
         {
             ShowOwnedMessage(this, "Voor deze sessie is nog geen transcriptbestand beschikbaar.", "Transcript ontbreekt", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
+        OpenSessionFileInShell(candidate, "Transcript openen mislukt");
+    }
+
+    // Een bestand uit een opnamemap openen in het bijbehorende programma. Moet het daarvoor eerst als tijdelijk bestand worden
+    // klaargezet (zie SessionFiles), dan verdwijnt dat na twee minuten (het programma heeft het dan gelezen) en anders bij de
+    // volgende start.
+    private void OpenSessionFileInShell(string path, string errorCaption)
+    {
+        SessionReadableFile? readable = null;
         try
         {
+            readable = SessionFiles.OpenReadableFile(path);
             Process.Start(new ProcessStartInfo
             {
-                FileName = candidate,
+                FileName = readable.Path,
                 UseShellExecute = true
-            });
+            })?.Dispose();
+            if (readable.IsTemporary)
+            {
+                var temporary = readable;
+                readable = null;
+                _ = Task.Delay(TimeSpan.FromMinutes(2)).ContinueWith(_ => temporary.Dispose(), TaskScheduler.Default);
+            }
         }
         catch (Exception ex)
         {
-            ShowOwnedMessage(this, ex.Message, "Transcript openen mislukt", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            ShowOwnedMessage(this, ex.Message, errorCaption, MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            readable?.Dispose();
         }
     }
     private void ShowTranscriptReadyActionsDialog(SessionManifest manifest)
@@ -367,7 +387,7 @@ public sealed partial class MainForm
             ExportLibraryTranscriptText(entry);
             return;
         }
-        if (string.IsNullOrWhiteSpace(entry.TranscriptJsonPath) || !File.Exists(entry.TranscriptJsonPath))
+        if (string.IsNullOrWhiteSpace(entry.TranscriptJsonPath) || !SessionFiles.Exists(entry.TranscriptJsonPath))
         {
             ShowOwnedMessage(this, "Voor export is transcript.json vereist. Deze sessie heeft dat bestand nog niet.", "Export niet mogelijk", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
@@ -436,7 +456,7 @@ public sealed partial class MainForm
     // Opnieuw uitschrijven kan bij een afgeronde, onderbroken of mislukte opname met audio waar de worker nu niet mee bezig is.
     private bool CanRetranscribe(TranscriptLibraryEntry entry)
     {
-        if (string.IsNullOrWhiteSpace(entry.DirectoryPath) || !File.Exists(Path.Combine(entry.DirectoryPath, "audio_mix.wav")))
+        if (string.IsNullOrWhiteSpace(entry.DirectoryPath) || !SessionFiles.Exists(Path.Combine(entry.DirectoryPath, "audio_mix.wav")))
         {
             return false;
         }
@@ -463,7 +483,7 @@ public sealed partial class MainForm
             ShowOwnedMessage(this, "Deze opname kan nu niet opnieuw worden uitgeschreven: ze loopt nog, de audio ontbreekt of ze wordt op dit moment uitgeschreven.", "Opnieuw uitschrijven", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
-        var hasTranscript = File.Exists(SessionArtifactPathService.ResolveTranscriptTextPath(entry.DirectoryPath)) || File.Exists(SessionArtifactPathService.ResolveTranscriptJsonPath(entry.DirectoryPath));
+        var hasTranscript = SessionFiles.Exists(SessionArtifactPathService.ResolveTranscriptTextPath(entry.DirectoryPath)) || SessionFiles.Exists(SessionArtifactPathService.ResolveTranscriptJsonPath(entry.DirectoryPath));
         if (hasTranscript && ShowOwnedMessage(this, $"'{MeetingListService.Title(entry)}' opnieuw uitschrijven?{Environment.NewLine}{Environment.NewLine}De huidige tekst blijft als reservekopie in de map van de opname staan.", "Opnieuw uitschrijven", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
         {
             return;

@@ -524,8 +524,8 @@ public sealed partial class MainForm
             items.Add(item);
         }
 
-        var hasTranscript = File.Exists(entry.TranscriptJsonPath ?? Path.Combine(entry.DirectoryPath, "transcript.json"));
-        var hasTranscriptText = !string.IsNullOrWhiteSpace(entry.TranscriptTextPath) && File.Exists(entry.TranscriptTextPath);
+        var hasTranscript = SessionFiles.Exists(entry.TranscriptJsonPath ?? Path.Combine(entry.DirectoryPath, "transcript.json"));
+        var hasTranscriptText = !string.IsNullOrWhiteSpace(entry.TranscriptTextPath) && SessionFiles.Exists(entry.TranscriptTextPath);
         Add(menu.Items, "Map openen", () => { OpenSelectedLibrarySessionFolder(); return Task.CompletedTask; });
         Add(menu.Items, "Uitgeschreven tekst opslaan", () => { ExportSelectedLibraryTranscript("txt"); return Task.CompletedTask; }, hasTranscriptText || hasTranscript);
         Add(menu.Items, "Ondertitels opslaan (voor de meeste videospelers)", () => { ExportSelectedLibraryTranscript("srt"); return Task.CompletedTask; }, hasTranscript);
