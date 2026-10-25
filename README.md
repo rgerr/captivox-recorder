@@ -128,7 +128,7 @@ The output goes to `dist\`: a folder and a zip with a self-contained `CaptivoxRe
 A paid edition, Captivox Pro, is coming soon for people who want to get more out of their meetings. It follows the same principles: everything runs on your own PC, no cloud, and privacy comes first. What it adds:
 
 - **Speaker recognition** (who said what), and giving speakers their names. The speaker models are downloaded from [captivox-models](https://github.com/rgerr/captivox-models) and checked against fixed checksums; no extra account needed.
-- **Meeting summaries and minutes** made by a local AI model on your own PC (Ollama; the installer picks the model that fits your graphics card). Decisions and action items are proposals that you review and confirm, each backed by the exact quote from the conversation.
+- **Meeting summaries and minutes** made by a local AI model on your own PC (the installer picks the model that fits your graphics card). Decisions and action items are proposals that you review and confirm, each backed by the exact quote from the conversation.
 - **Finishing a meeting**: confirmed actions go to your action list, optionally as Outlook tasks (classic Outlook), the minutes as a Word document, and a draft email to the attendees. Captivox never sends anything itself.
 - **Follow-up**: open actions with owner and due date, overdue and due today at the top.
 - **Today**: your meetings of the day from your Outlook calendar, with a short preparation: attendees, open actions and decisions from earlier meetings of the same series.
