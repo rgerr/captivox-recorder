@@ -7,6 +7,7 @@
 Captivox Recorder records your microphone and your PC's audio at the same time (Teams, Zoom, Google Meet or any other app), then turns the conversation into text in the background with [WhisperX](https://github.com/m-bain/whisperX). Everything happens on your own computer: no cloud, no account, no telemetry.
 
 - Version: **2.0.2** (October 2026)
+- Website: [captivox.nl](https://captivox.nl/en/)
 - Licence: [GPL-3.0](LICENSE)
 - Runs on: Windows 10 and 11 (64-bit)
 - Languages: the interface is in English, Dutch, German or French; transcription in Dutch, English, German, French, Spanish, Italian, Chinese and Japanese
@@ -135,7 +136,7 @@ A paid edition, Captivox Pro, is coming soon for people who want to get more out
 - **Organisations kept strictly separate**: each organisation has its own storage folder, and recordings, transcripts and minutes are encrypted (AES-256-GCM, with a key protected by your Windows account). You only see the organisation you are working for.
 - A 30-day trial. When a licence ends, Captivox falls back to the free features and your own data always stays readable.
 
-Captivox Pro is not available yet. You can find the Captivox Pro page in the app.
+Captivox Pro is not available yet. Read more on [captivox.nl](https://captivox.nl/en/pro/) or on the Captivox Pro page in the app. Organisations will find a privacy statement and a DPIA template on [captivox.nl/en/organisations](https://captivox.nl/en/organisations/).
 
 ## Questions, bugs and ideas
 
